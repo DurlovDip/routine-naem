@@ -1,4 +1,11 @@
 import { createDemoState } from "./demo";
+import {
+  catalogFromModules,
+  normalizeModuleNumber,
+  normalizeSubNumber,
+  sortModuleNumbers,
+  sortSubNumbers,
+} from "./text";
 import type { AppState, DayPlan, Footer, HeaderLine } from "./types";
 
 const KEY = "acsd-daily-schedule-v1";
@@ -36,19 +43,34 @@ export function normalizeState(raw: unknown): AppState | null {
     ...(value.footer && typeof value.footer === "object" ? (value.footer as Partial<Footer>) : {}),
   };
   const active = days.some((day) => day.id === value.activeDayId) ? value.activeDayId! : days[0].id;
+  const modules = Array.isArray(value.modules) ? value.modules : [];
+  const derived = catalogFromModules(modules);
+  const moduleNumbers = stringList(value.moduleNumbers, normalizeModuleNumber, sortModuleNumbers);
+  const subNumbers = stringList(value.subNumbers, normalizeSubNumber, sortSubNumbers);
   return {
     version: 1,
     header: header.length > 0 ? header : demo.header,
     recapLabel: typeof value.recapLabel === "string" ? value.recapLabel : demo.recapLabel,
     batches: value.batches,
     teachers: Array.isArray(value.teachers) ? value.teachers : [],
-    modules: Array.isArray(value.modules) ? value.modules : [],
+    modules,
+    moduleNumbers: moduleNumbers ?? (derived.moduleNumbers.length > 0 ? derived.moduleNumbers : demo.moduleNumbers),
+    subNumbers: subNumbers ?? (derived.subNumbers.length > 0 ? derived.subNumbers : demo.subNumbers),
     days,
     activeDayId: active,
     autoRotate: Boolean(value.autoRotate),
     showConflicts: value.showConflicts !== false,
     footer,
   };
+}
+
+function stringList(
+  raw: unknown,
+  normalize: (value: string) => string,
+  sort: (values: string[]) => string[],
+): string[] | null {
+  if (!Array.isArray(raw)) return null;
+  return sort(raw.filter((item): item is string => typeof item === "string").map(normalize));
 }
 
 export function loadState(): AppState | null {

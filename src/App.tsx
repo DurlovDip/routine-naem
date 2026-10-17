@@ -1,22 +1,20 @@
-import { useEffect, useRef, useState } from "react";
-import { toPng } from "html-to-image";
-import { CopyPlus, Download, ImageDown, Printer, RotateCcw, Trash2, Upload } from "lucide-react";
+import { useRef, useState } from "react";
+import { CopyPlus, FileDown, Printer, Trash2 } from "lucide-react";
 import { BatchEditor, FooterEditor, HeaderEditor, LibraryEditor, StructureEditor } from "./components/panels";
 import { GridEditor } from "./components/GridEditor";
 import { PreviewPane } from "./components/PreviewPane";
 import { Button, ConfirmDialog, Section } from "./components/ui";
+import { downloadScheduleDocx } from "./lib/docx";
 import { joinWithAnd, rotateIds } from "./lib/text";
-import { exportJson, normalizeState } from "./lib/storage";
 import { formatDayNumber, formatSlashDate, weekdayName } from "./lib/time";
 import type { CellSelection } from "./lib/types";
 import { ScheduleProvider, useSchedule } from "./state";
 
-type Mode = "split" | "edit" | "preview";
-type ConfirmKind = "reset" | "delete-day" | null;
+type Mode = "edit" | "preview";
 
 function readHash(): { mode: Mode; cell: CellSelection | null } {
   const hash = window.location.hash.replace(/^#/, "");
-  const mode: Mode = hash.startsWith("preview") ? "preview" : hash.startsWith("edit") ? "edit" : "split";
+  const mode: Mode = hash.startsWith("preview") ? "preview" : "edit";
   const match = hash.match(/cell=([^&]+)/);
   if (!match?.[1]) return { mode, cell: null };
   const [batchId, sessionId] = decodeURIComponent(match[1]).split(":");
@@ -24,31 +22,14 @@ function readHash(): { mode: Mode; cell: CellSelection | null } {
   return { mode, cell: { batchId, sessionId } };
 }
 
-function useWideScreen() {
-  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1100px)").matches);
-  useEffect(() => {
-    const query = window.matchMedia("(min-width: 1100px)");
-    const onChange = () => setWide(query.matches);
-    query.addEventListener("change", onChange);
-    return () => query.removeEventListener("change", onChange);
-  }, []);
-  return wide;
-}
-
 function Shell() {
-  const { state, dispatch, day, persistError } = useSchedule();
+  const { state, dispatch, day } = useSchedule();
   const [mode, setMode] = useState<Mode>(() => readHash().mode);
   const [selection, setSelection] = useState<CellSelection | null>(() => readHash().cell);
-  const [confirm, setConfirm] = useState<ConfirmKind>(null);
-  const [status, setStatus] = useState("Saved in this browser");
-  const [pngTick, setPngTick] = useState(0);
-  const wide = useWideScreen();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
-  const pngRun = useRef(0);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const effective: Mode = !wide && mode === "split" ? "edit" : mode;
-  const showEditor = effective !== "preview";
-  const showPreview = effective !== "edit";
+  const showEditor = mode !== "preview";
+  const showPreview = mode !== "edit";
 
   const nextIds = state.batches.map((batch) =>
     joinWithAnd(rotateIds(batch.roster, day.managers[batch.id] ?? [])),
@@ -56,67 +37,17 @@ function Shell() {
   const sameNext = nextIds.every((text) => text === nextIds[0]);
   const nextLabel = sameNext ? nextIds[0] || "none" : "the next IDs in each roster";
 
-  useEffect(() => {
-    if (pngTick === 0) return;
-    const run = ++pngRun.current;
-    const node = sheetRef.current;
-    if (!node) return;
-    void (async () => {
-      try {
-        await document.fonts.ready;
-        if (pngRun.current !== run) return;
-        const dataUrl = await toPng(node, {
-          pixelRatio: 2,
-          backgroundColor: "#ffffff",
-          cacheBust: true,
-        });
-        if (pngRun.current !== run) return;
-        const number = String(day.dayNumber).padStart(2, "0");
-        const link = document.createElement("a");
-        link.href = dataUrl;
-        link.download = `daily-schedule-day-${number}-${day.date}.png`;
-        document.body.append(link);
-        link.click();
-        link.remove();
-        setStatus("PNG downloaded");
-      } catch {
-        if (pngRun.current === run) setStatus("Could not create the PNG");
-      }
-    })();
-  }, [day.date, day.dayNumber, pngTick]);
-
-  async function onImport(file: File | undefined) {
-    if (!file) return;
-    try {
-      const parsed = normalizeState(JSON.parse(await file.text()));
-      if (!parsed) {
-        setStatus("That file is not a schedule");
-        return;
-      }
-      dispatch({ type: "replace", state: parsed });
-      setSelection(null);
-      setStatus("Schedule imported");
-    } catch {
-      setStatus("Could not read that JSON file");
-    }
-  }
-
   return (
     <div className="app">
       <header className="toolbar no-print">
-        <div className="mr-auto">
+        <div>
           <div className="brand-title">Daily Schedule</div>
           <div className="brand-sub">Class routine for the training course</div>
         </div>
         <div className="segmented" role="group" aria-label="View">
-          {(wide ? (["edit", "split", "preview"] as const) : (["edit", "preview"] as const)).map((item) => (
-            <button
-              key={item}
-              type="button"
-              aria-pressed={mode === item || (!wide && item === "edit" && mode === "split")}
-              onClick={() => setMode(item)}
-            >
-              {item === "edit" ? "Editor" : item === "preview" ? "Preview" : "Split"}
+          {(["edit", "preview"] as const).map((item) => (
+            <button key={item} type="button" aria-pressed={mode === item} onClick={() => setMode(item)}>
+              {item === "edit" ? "Editor" : "Preview"}
             </button>
           ))}
         </div>
@@ -124,37 +55,10 @@ function Shell() {
           <Button tone="primary" onClick={() => window.print()}>
             <Printer size={16} /> Print / PDF
           </Button>
-          <Button
-            onClick={() => {
-              setMode("preview");
-              setPngTick((value) => value + 1);
-            }}
-          >
-            <ImageDown size={16} /> PNG
-          </Button>
-          <Button onClick={() => exportJson(state)}>
-            <Download size={16} /> JSON
-          </Button>
-          <Button onClick={() => fileRef.current?.click()}>
-            <Upload size={16} /> Import
-          </Button>
-          <Button tone="quiet" onClick={() => setConfirm("reset")}>
-            <RotateCcw size={15} /> Sample
+          <Button onClick={() => void downloadScheduleDocx(state, day)}>
+            <FileDown size={16} /> Print / DOCX
           </Button>
         </div>
-        <div className="status" role="status">
-          {persistError ? "This browser blocked saving. Export JSON to keep a copy." : status}
-        </div>
-        <input
-          ref={fileRef}
-          className="sr-only"
-          type="file"
-          accept="application/json,.json"
-          onChange={(event) => {
-            void onImport(event.target.files?.[0]);
-            event.target.value = "";
-          }}
-        />
       </header>
       <div
         className="workspace"
@@ -220,7 +124,7 @@ function Shell() {
                 <Button
                   tone="danger"
                   disabled={state.days.length <= 1}
-                  onClick={() => setConfirm("delete-day")}
+                  onClick={() => setConfirmDelete(true)}
                 >
                   <Trash2 size={15} /> Delete day
                 </Button>
@@ -244,21 +148,20 @@ function Shell() {
             <div className="px-4 py-4">
               <GridEditor day={day} selection={selection} onSelect={setSelection} />
             </div>
-            <Section title="Batches and day managers" summary={`${state.batches.length} rows`} defaultOpen>
+            <Section title="Settings" summary="Teachers and modules">
+              <LibraryEditor />
+            </Section>
+            <Section title="Batches and day managers" summary={`${state.batches.length} rows`}>
               <BatchEditor day={day} />
             </Section>
             <Section
               title="Times, sessions and breaks"
               summary={`${day.slots.filter((slot) => slot.kind === "session").length} sessions`}
-              defaultOpen
             >
               <StructureEditor day={day} />
             </Section>
             <Section title="Document header" summary="Scheme, course, duration">
               <HeaderEditor />
-            </Section>
-            <Section title="Module and teacher library" summary={`${state.modules.length} modules`}>
-              <LibraryEditor />
             </Section>
             <Section title="Signature and footer" summary={state.footer.name}>
               <FooterEditor />
@@ -275,22 +178,16 @@ function Shell() {
           </div>
         )}
       </div>
-      {confirm ? (
+      {confirmDelete ? (
         <ConfirmDialog
-          title={confirm === "reset" ? "Restore the sample sheet?" : "Delete this day?"}
-          body={
-            confirm === "reset"
-              ? "This replaces the schedule in this browser with the Day 07 sample from 18 October 2026."
-              : "The routines on the other days stay. This day’s cells are removed."
-          }
-          confirmLabel={confirm === "reset" ? "Restore sample" : "Delete day"}
-          onCancel={() => setConfirm(null)}
+          title="Delete this day?"
+          body="The routines on the other days stay. This day’s cells are removed."
+          confirmLabel="Delete day"
+          onCancel={() => setConfirmDelete(false)}
           onConfirm={() => {
-            if (confirm === "reset") dispatch({ type: "reset-demo" });
-            else dispatch({ type: "delete-day", dayId: day.id });
+            dispatch({ type: "delete-day", dayId: day.id });
             setSelection(null);
-            setConfirm(null);
-            setStatus(confirm === "reset" ? "Sample sheet restored" : "Day deleted");
+            setConfirmDelete(false);
           }}
         />
       ) : null}

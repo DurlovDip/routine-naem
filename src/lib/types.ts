@@ -76,6 +76,8 @@ export type AppState = {
   batches: Batch[];
   teachers: Teacher[];
   modules: ModuleEntry[];
+  moduleNumbers: string[];
+  subNumbers: string[];
   days: DayPlan[];
   activeDayId: string;
   autoRotate: boolean;

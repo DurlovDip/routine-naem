@@ -397,16 +397,16 @@ export function HeaderEditor() {
 export function LibraryEditor() {
   const { state, dispatch } = useSchedule();
   const [teacher, setTeacher] = useState("");
-  const [code, setCode] = useState("");
-  const [title, setTitle] = useState("");
+  const [moduleNumber, setModuleNumber] = useState("");
+  const [subNumber, setSubNumber] = useState("");
 
   return (
-    <div className="space-y-4">
+    <div className="settings-panel">
       <div>
         <div className="field-label">Teachers</div>
-        <ul className="space-y-1.5">
+        <ul className="settings-list">
           {state.teachers.map((item) => (
-            <li key={item.id} className="flex gap-2">
+            <li key={item.id} className="settings-item">
               <input
                 className="field"
                 aria-label={`Teacher ${item.name}`}
@@ -434,7 +434,7 @@ export function LibraryEditor() {
         >
           <input
             className="field"
-            placeholder="Add a teacher"
+            placeholder="Teacher name"
             value={teacher}
             onChange={(event) => setTeacher(event.target.value)}
           />
@@ -442,69 +442,71 @@ export function LibraryEditor() {
             Add
           </Button>
         </form>
-        <p className="hint">Removing a name from this list leaves it on routines already written.</p>
       </div>
       <div>
         <div className="field-label">Modules</div>
-        <ul className="space-y-1.5">
-          {state.modules.map((item) => (
-            <li key={item.id} className="flex gap-2">
-              <input
-                className="field"
-                aria-label="Module code"
-                value={item.code}
-                onChange={(event) =>
-                  dispatch({
-                    type: "update-module",
-                    id: item.id,
-                    code: event.target.value,
-                    title: item.title,
-                  })
-                }
-              />
-              <input
-                className="field"
-                aria-label="Module title"
-                value={item.title}
-                placeholder="Title or note"
-                onChange={(event) =>
-                  dispatch({
-                    type: "update-module",
-                    id: item.id,
-                    code: item.code,
-                    title: event.target.value,
-                  })
-                }
-              />
-              <IconButton
-                label={`Remove ${item.code}`}
-                onClick={() => dispatch({ type: "remove-module", id: item.id })}
+        <p className="hint">Module numbers and sub-numbers. A cell prints as M- 7.04.</p>
+        <div className="mt-2 text-xs font-semibold text-stone-500">Module number</div>
+        <div className="tag-list">
+          {state.moduleNumbers.map((item) => (
+            <span key={item} className="tag">
+              {item}
+              <button
+                type="button"
+                aria-label={`Remove ${item}`}
+                onClick={() => dispatch({ type: "remove-module-number", value: item })}
               >
-                <Trash2 size={14} />
-              </IconButton>
-            </li>
+                ×
+              </button>
+            </span>
           ))}
-        </ul>
+        </div>
         <form
-          className="mt-2 flex flex-wrap gap-2"
+          className="mt-2 flex gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            dispatch({ type: "add-module", code, title });
-            setCode("");
-            setTitle("");
+            dispatch({ type: "add-module-number", value: moduleNumber });
+            setModuleNumber("");
           }}
         >
           <input
-            className="field min-w-28 flex-1"
-            placeholder="M- 1.01"
-            value={code}
-            onChange={(event) => setCode(event.target.value)}
+            className="field"
+            placeholder="M-7"
+            value={moduleNumber}
+            onChange={(event) => setModuleNumber(event.target.value)}
           />
+          <Button type="submit" tone="primary">
+            Add
+          </Button>
+        </form>
+        <div className="mt-3 text-xs font-semibold text-stone-500">Sub-number</div>
+        <div className="tag-list">
+          {state.subNumbers.map((item) => (
+            <span key={item} className="tag">
+              {item}
+              <button
+                type="button"
+                aria-label={`Remove ${item}`}
+                onClick={() => dispatch({ type: "remove-sub-number", value: item })}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+        <form
+          className="mt-2 flex gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            dispatch({ type: "add-sub-number", value: subNumber });
+            setSubNumber("");
+          }}
+        >
           <input
-            className="field min-w-36 flex-1"
-            placeholder="Title"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
+            className="field"
+            placeholder=".04"
+            value={subNumber}
+            onChange={(event) => setSubNumber(event.target.value)}
           />
           <Button type="submit" tone="primary">
             Add

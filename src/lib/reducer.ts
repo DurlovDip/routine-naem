@@ -1,7 +1,15 @@
 import { createDemoState } from "./demo";
 import { uid } from "./id";
 import { cellKey, sessionSlots } from "./schedule";
-import { orderedManagers, rosterRange, rotateIds } from "./text";
+import {
+  normalizeModuleNumber,
+  normalizeSubNumber,
+  orderedManagers,
+  rosterRange,
+  rotateIds,
+  sortModuleNumbers,
+  sortSubNumbers,
+} from "./text";
 import { addDays, clampDuration, isClock, isIsoDate } from "./time";
 import type {
   AppState,
@@ -57,6 +65,10 @@ export type Action =
   | { type: "add-module"; code: string; title: string }
   | { type: "update-module"; id: string; code: string; title: string }
   | { type: "remove-module"; id: string }
+  | { type: "add-module-number"; value: string }
+  | { type: "remove-module-number"; value: string }
+  | { type: "add-sub-number"; value: string }
+  | { type: "remove-sub-number"; value: string }
   | { type: "duplicate-day"; dayId: string }
   | { type: "new-day"; dayId: string }
   | { type: "delete-day"; dayId: string };
@@ -402,6 +414,23 @@ export function scheduleReducer(state: AppState, action: Action): AppState {
       };
     case "remove-module":
       return { ...state, modules: state.modules.filter((module) => module.id !== action.id) };
+    case "add-module-number": {
+      const value = normalizeModuleNumber(action.value);
+      if (!value || state.moduleNumbers.includes(value)) return state;
+      return { ...state, moduleNumbers: sortModuleNumbers([...state.moduleNumbers, value]) };
+    }
+    case "remove-module-number":
+      return {
+        ...state,
+        moduleNumbers: state.moduleNumbers.filter((item) => item !== action.value),
+      };
+    case "add-sub-number": {
+      const value = normalizeSubNumber(action.value);
+      if (!value || state.subNumbers.includes(value)) return state;
+      return { ...state, subNumbers: sortSubNumbers([...state.subNumbers, value]) };
+    }
+    case "remove-sub-number":
+      return { ...state, subNumbers: state.subNumbers.filter((item) => item !== action.value) };
     case "duplicate-day": {
       const day = state.days.find((item) => item.id === action.dayId);
       if (!day) return state;

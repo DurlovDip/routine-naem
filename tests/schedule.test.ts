@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { Packer } from "docx";
+import JSZip from "jszip";
 import { createDemoState } from "../src/lib/demo";
+import { buildScheduleDocument } from "../src/lib/docx";
 import { normalizeState } from "../src/lib/storage";
 import { scheduleReducer } from "../src/lib/reducer";
 import {
@@ -8,7 +11,7 @@ import {
   findConflicts,
   sessionsContiguous,
 } from "../src/lib/schedule";
-import { joinWithAnd, rotateIds } from "../src/lib/text";
+import { formatModuleCode, joinWithAnd, parseModuleCode, rotateIds } from "../src/lib/text";
 import { formatClock, weekdayName } from "../src/lib/time";
 
 describe("demo day", () => {
@@ -57,6 +60,14 @@ describe("demo day", () => {
 
   it("has no teacher clashes on the sample day", () => {
     expect(findConflicts(state.batches, day)).toEqual([]);
+  });
+
+  it("splits a module into number and sub-number", () => {
+    expect(parseModuleCode("M- 7.04")).toEqual({ moduleNumber: "M-7", subNumber: ".04" });
+    expect(formatModuleCode("M-7", ".04")).toBe("M- 7.04");
+    expect(formatModuleCode("M-3", ".06")).toBe("M- 3.06");
+    expect(state.moduleNumbers).toContain("M-7");
+    expect(state.subNumbers).toContain(".04");
   });
 
   it("round-trips through JSON import", () => {
@@ -135,6 +146,24 @@ describe("rotation, merges and clashes", () => {
       "Md. Sazzad Ali",
       "Muhammad Yeakub Ali",
     ]);
+  });
+
+  it("exports a Word table with the sheet merges", async () => {
+    const state = createDemoState();
+    const buffer = await Packer.toBuffer(buildScheduleDocument(state, state.days[0]));
+    const zip = await JSZip.loadAsync(buffer);
+    const xml = await zip.file("word/document.xml")?.async("string");
+    expect(xml).toBeTruthy();
+    const spans = xml?.match(/w:gridSpan w:val="2"/g) ?? [];
+    expect(spans.length).toBeGreaterThanOrEqual(2);
+    expect(xml).toContain("w:vMerge");
+    expect(xml).toContain("Tea Break");
+    expect(xml).toContain("Prayer &amp; Lunch Break");
+    expect(xml).toContain("M- 7.04 (Theory)");
+    expect(xml).toContain("Prof. Asisul");
+    expect(xml).toContain("Day – 07");
+    expect(xml).toContain("Dr. Litan Kanti Halder");
+    expect(xml?.match(/Tea Break/g)).toHaveLength(1);
   });
 
   it("stops at 10 sessions", () => {

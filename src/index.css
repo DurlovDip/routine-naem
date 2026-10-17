@@ -159,7 +159,7 @@ button { cursor: pointer; }
 
 .area { min-height: 4.2rem; resize: vertical; }
 
-.field:focus, .area:focus, .segmented button:focus-visible, .btn:focus-visible, .icon-btn:focus-visible, .chip:focus-visible, .cell-btn:focus-visible {
+.field:focus, .area:focus, .segmented button:focus-visible, .btn:focus-visible, .icon-btn:focus-visible, .chip:focus-visible, .cell-btn:focus-visible, .pick-btn:focus-visible {
   outline: 2px solid var(--pine);
   outline-offset: 1px;
 }
@@ -306,13 +306,130 @@ button { cursor: pointer; }
 }
 
 .cell-panel {
+  position: relative;
+  z-index: 4;
+  max-width: 34rem;
   border: 1px solid #c9deD2;
   background: #f3faf6;
   border-radius: 0.8rem;
-  padding: 0.8rem;
+  padding: 0.7rem 0.8rem 0.75rem;
   margin-bottom: 0.75rem;
 }
-.cell-panel h3 { margin: 0; font-size: 0.95rem; }
+.cell-panel h3 { margin: 0; font-size: 0.92rem; }
+.cell-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-bottom: 0.55rem; }
+.teacher-picks { display: flex; flex-direction: column; gap: 0.35rem; }
+.teacher-line { display: flex; align-items: flex-end; gap: 0.35rem; }
+.teacher-line .pick { flex: 1; min-width: 0; }
+.module-picks {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.5rem 0.65rem;
+  align-items: end;
+  margin-top: 0.65rem;
+}
+.code-chip {
+  grid-column: 1 / -1;
+  font-family: "Tinos", "Times New Roman", Times, serif;
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: 0.01em;
+}
+.pick { position: relative; min-width: 0; }
+.pick-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.9rem;
+  text-align: left;
+}
+.pick-placeholder { color: #9a9186; }
+.pick-menu {
+  position: absolute;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  max-height: 13.5rem;
+  overflow: auto;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 0.55rem;
+  box-shadow: 0 12px 28px rgba(40, 30, 10, 0.14);
+  padding: 0.2rem;
+}
+.pick-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 0.4rem;
+  padding: 0.38rem 0.5rem;
+  font-size: 0.88rem;
+}
+.pick-menu button[aria-selected="true"],
+.pick-menu button:hover { background: #e8f3ed; }
+.pick-empty { padding: 0.4rem 0.5rem; font-size: 0.8rem; color: #6f675e; }
+.add-teacher, .more-link, .tiny-x {
+  border: 0;
+  background: transparent;
+  color: var(--pine);
+  font-weight: 700;
+}
+.add-teacher, .more-link { font-size: 0.78rem; padding: 0.15rem 0; width: fit-content; }
+.cell-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-top: 0.45rem;
+}
+.more-link { margin-top: 0; }
+.tiny-x {
+  width: 1.7rem;
+  height: 2rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+.merge-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 650;
+}
+.merge-toggle input { accent-color: var(--pine); width: 0.9rem; height: 0.9rem; }
+.more-fields { display: grid; gap: 0.55rem; margin-top: 0.55rem; }
+.settings-panel { display: grid; gap: 1.1rem; }
+.settings-list { display: grid; gap: 0.35rem; margin: 0; padding: 0; list-style: none; }
+.settings-item { display: flex; gap: 0.35rem; align-items: center; }
+.tag-list { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.35rem; }
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.12rem 0.35rem 0.12rem 0.6rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+.tag button {
+  border: 0;
+  background: transparent;
+  color: #6f675e;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+}
 .serif-preview {
   font-family: "Tinos", "Times New Roman", Times, serif;
   text-align: center;

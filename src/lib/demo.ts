@@ -1,6 +1,6 @@
 import { DEMO_SIGNATURE } from "./signature";
 import type { AppState, CellContent, DayPlan } from "./types";
-import { rosterRange } from "./text";
+import { catalogFromModules, rosterRange } from "./text";
 import { cellKey } from "./schedule";
 
 function cell(code: string, note: string, teachers: string[]): CellContent {
@@ -71,6 +71,22 @@ export function createDemoState(): AppState {
   put(cells, "batch-13", "s5", cell("M- 3.02", "", ["Mr. Ariful"]));
 
   const dayManagers = Object.fromEntries(batches.map((batch) => [batch.id, [...managers]]));
+  const modules = [
+    ["M- 7.04", "(Theory)"],
+    ["M- 7.04", "TPP (Theory & Practice)"],
+    ["M- 7.04", "(Practice & Presentation)"],
+    ["M- 1.06", ""],
+    ["M- 1.08", ""],
+    ["M- 3.02", ""],
+    ["M- 3.05", ""],
+    ["M- 5.01", ""],
+    ["M- 5.06", ""],
+    ["M- 6.01", ""],
+    ["M- 8.03", ""],
+    ["M- 8.07", ""],
+    ["M- 8.08", ""],
+    ["M- 8.10", ""],
+  ].map(([code, title], index) => ({ id: `module-${index + 1}`, code, title }));
 
   return {
     version: 1,
@@ -118,22 +134,8 @@ export function createDemoState(): AppState {
       "Ms. Arifa",
       "Dr. Ayet",
     ].map((name, index) => ({ id: `teacher-${index + 1}`, name })),
-    modules: [
-      ["M- 7.04", "(Theory)"],
-      ["M- 7.04", "TPP (Theory & Practice)"],
-      ["M- 7.04", "(Practice & Presentation)"],
-      ["M- 1.06", ""],
-      ["M- 1.08", ""],
-      ["M- 3.02", ""],
-      ["M- 3.05", ""],
-      ["M- 5.01", ""],
-      ["M- 5.06", ""],
-      ["M- 6.01", ""],
-      ["M- 8.03", ""],
-      ["M- 8.07", ""],
-      ["M- 8.08", ""],
-      ["M- 8.10", ""],
-    ].map(([code, title], index) => ({ id: `module-${index + 1}`, code, title })),
+    modules,
+    ...catalogFromModules(modules),
     footer: {
       signature: DEMO_SIGNATURE,
       signatureDate: "17.10.26",

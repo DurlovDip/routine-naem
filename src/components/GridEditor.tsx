@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, ChevronDown } from "lucide-react";
 import {
   buildTimeline,
   cellHasConflict,
@@ -8,11 +8,17 @@ import {
   rowCells,
   type SheetSession,
 } from "../lib/schedule";
-import { formatModule, joinWithAnd, orderedManagers, sessionSpanLabel } from "../lib/text";
+import {
+  formatModule,
+  formatModuleCode,
+  joinWithAnd,
+  orderedManagers,
+  parseModuleCode,
+  sessionSpanLabel,
+} from "../lib/text";
 import { formatClock, formatRange } from "../lib/time";
 import type { CellContent, CellSelection, DayPlan } from "../lib/types";
 import { useSchedule } from "../state";
-import { Button } from "./ui";
 
 export function GridEditor({
   day,
@@ -52,10 +58,7 @@ export function GridEditor({
   return (
     <div>
       <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="text-sm text-stone-600">
-          Click a cell to edit the module and teachers. Adjacent sessions, with no break between
-          them, can merge for one batch.
-        </p>
+        <p className="text-sm text-stone-600">Click a session, then pick a teacher and module.</p>
         <label className="switch shrink-0">
           <input
             type="checkbox"
@@ -84,6 +87,7 @@ export function GridEditor({
       ) : null}
       {selectedCell ? (
         <CellPanel
+          key={`${selection!.batchId}:${selectedCell.cell.anchorId}`}
           day={day}
           batchId={selection!.batchId}
           batchName={selectedCell.batchName}
@@ -191,25 +195,26 @@ function CellPanel({
   onClose: () => void;
 }) {
   const { state, dispatch } = useSchedule();
-  const [teacherDraft, setTeacherDraft] = useState("");
-  const [codeFocus, setCodeFocus] = useState(false);
-  const [teacherFocus, setTeacherFocus] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState<string | null>(null);
+  const [more, setMore] = useState(false);
+  const [extraTeacher, setExtraTeacher] = useState(false);
   const maxSpan = maxSpanFrom(day.slots, cell.anchorId);
-  const timeline = buildTimeline(day);
-  const timed = timeline.slots.filter((slot) => slot.kind === "session");
-  const first = timed.find((slot) => slot.id === cell.sessionIds[0]);
-  const last = timed.find((slot) => slot.id === cell.sessionIds[cell.sessionIds.length - 1]);
-  const codeQuery = cell.content.code.trim().toLowerCase();
-  const moduleOptions = state.modules
-    .filter((module) => {
-      const hay = `${module.code} ${module.title}`.toLowerCase();
-      return !codeQuery || hay.includes(codeQuery);
-    })
-    .slice(0, 8);
-  const teacherQuery = teacherDraft.trim().toLowerCase();
-  const teacherOptions = state.teachers
-    .filter((teacher) => !teacherQuery || teacher.name.toLowerCase().includes(teacherQuery))
-    .slice(0, 8);
+  const parsed = parseModuleCode(cell.content.code);
+  const moduleNumber = parsed?.moduleNumber ?? "";
+  const subNumber = parsed?.subNumber ?? "";
+  const identity = `${batchId}:${cell.anchorId}`;
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && panelRef.current?.contains(target)) return;
+      setOpen(null);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    return () => document.removeEventListener("pointerdown", onPointer);
+  }, [open]);
 
   function update(next: CellContent) {
     dispatch({
@@ -221,244 +226,238 @@ function CellPanel({
     });
   }
 
-  function addTeacher(name: string) {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-    if (cell.content.teachers.some((teacher) => teacher.toLowerCase() === trimmed.toLowerCase())) {
-      setTeacherDraft("");
-      return;
+  function setParts(nextModule: string, nextSub: string) {
+    update({ ...cell.content, code: formatModuleCode(nextModule, nextSub) });
+    setOpen(null);
+  }
+
+  function setTeacher(index: number, name: string) {
+    const teachers = cell.content.teachers.slice();
+    if (!name) {
+      if (index < teachers.length) teachers.splice(index, 1);
+    } else if (index >= teachers.length) {
+      if (!teachers.some((teacher) => teacher.toLowerCase() === name.toLowerCase())) teachers.push(name);
+    } else if (!teachers.some((teacher, item) => item !== index && teacher.toLowerCase() === name.toLowerCase())) {
+      teachers[index] = name;
     }
-    update({ ...cell.content, teachers: [...cell.content.teachers, trimmed] });
-    setTeacherDraft("");
+    update({ ...cell.content, teachers });
+    setExtraTeacher(false);
+    setOpen(null);
   }
 
-  function moveTeacher(index: number, dir: -1 | 1) {
-    const next = cell.content.teachers.slice();
-    const target = index + dir;
-    if (target < 0 || target >= next.length) return;
-    const [item] = next.splice(index, 1);
-    next.splice(target, 0, item);
-    update({ ...cell.content, teachers: next });
-  }
-
-  const knownTeacher = (name: string) =>
-    state.teachers.some((teacher) => teacher.name.toLowerCase() === name.trim().toLowerCase());
+  const teacherRows = cell.content.teachers.length > 0 ? cell.content.teachers : [""];
+  const rows = extraTeacher ? [...teacherRows, ""] : teacherRows;
+  const canMerge = maxSpan >= 2 || cell.span >= 2;
 
   return (
-    <div className="cell-panel">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h3>
-            {cell.span > 1 ? "Merged cell · " : ""}
-            {batchName} · {sessionSpanLabel(cell.numbers)}
-          </h3>
-          <p className="text-sm text-stone-600">
-            {first && last ? formatRange(first.start, last.end) : ""}
-            {cell.span > 1 ? " · one class across these sessions" : ""}
-          </p>
-        </div>
-        <Button tone="quiet" onClick={onClose}>
+    <div className="cell-panel" ref={panelRef} data-cell-editor>
+      <div className="cell-head">
+        <h3>
+          {batchName} · {sessionSpanLabel(cell.numbers)}
+        </h3>
+        <button type="button" className="more-link" onClick={onClose}>
           Close
-        </Button>
+        </button>
       </div>
-      <div className="serif-preview mb-3">
-        <div className="code">{formatModule(cell.content.code, cell.content.note) || "Module"}</div>
-        <div className="who">{joinWithAnd(cell.content.teachers) || "Teachers"}</div>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className="suggest block">
-          <span className="field-label">Module code</span>
-          <input
-            className="field"
-            value={cell.content.code}
-            onFocus={() => setCodeFocus(true)}
-            onBlur={() => setCodeFocus(false)}
-            onChange={(event) => update({ ...cell.content, code: event.target.value })}
-          />
-          {codeFocus && moduleOptions.length > 0 ? (
-            <ul className="suggest-list">
-              {moduleOptions.map((module) => (
-                <li key={module.id}>
-                  <button
-                    type="button"
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      update({ ...cell.content, code: module.code, note: module.title });
-                      setCodeFocus(false);
-                    }}
-                  >
-                    <strong>{module.code}</strong>
-                    {module.title ? <span className="ml-2 text-stone-500">{module.title}</span> : null}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </label>
-        <label className="block">
-          <span className="field-label">Note</span>
-          <input
-            className="field"
-            value={cell.content.note}
-            placeholder="(Theory)"
-            onChange={(event) => update({ ...cell.content, note: event.target.value })}
-          />
-        </label>
-      </div>
-      <div className="mt-3">
-        <div className="field-label">Teachers</div>
-        {cell.content.teachers.map((name, index) => (
-          <div key={`${name}-${index}`} className="teacher-row">
-            <span className="text-xs text-stone-500">{index + 1}</span>
-            <span className="name">
-              {name}
-              {!knownTeacher(name) ? (
-                <button
-                  type="button"
-                  className="btn btn-quiet ml-1"
-                  onClick={() => dispatch({ type: "add-teacher", name })}
-                >
-                  Save to library
-                </button>
-              ) : null}
-            </span>
-            <span className="flex gap-1">
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label="Move teacher up"
-                disabled={index === 0}
-                onClick={() => moveTeacher(index, -1)}
-              >
-                <ChevronUp size={14} />
-              </button>
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label="Move teacher down"
-                disabled={index === cell.content.teachers.length - 1}
-                onClick={() => moveTeacher(index, 1)}
-              >
-                <ChevronDown size={14} />
-              </button>
-              <button
-                type="button"
-                className="icon-btn"
-                aria-label={`Remove ${name}`}
-                onClick={() =>
-                  update({
-                    ...cell.content,
-                    teachers: cell.content.teachers.filter((_, item) => item !== index),
-                  })
-                }
-              >
-                <Trash2 size={14} />
-              </button>
-            </span>
-          </div>
-        ))}
-        <form
-          className="suggest mt-1 flex gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            addTeacher(teacherDraft);
-          }}
-        >
-          <div className="relative min-w-0 flex-1">
-            <input
-              className="field"
-              placeholder="Add a teacher"
-              value={teacherDraft}
-              onFocus={() => setTeacherFocus(true)}
-              onBlur={() => setTeacherFocus(false)}
-              onChange={(event) => setTeacherDraft(event.target.value)}
+      <div className="teacher-picks">
+        {rows.map((name, index) => (
+          <div key={`${identity}-teacher-${index}`} className="teacher-line">
+            <Pick
+              label={index === 0 ? "Teacher" : `Teacher ${index + 1}`}
+              value={name}
+              placeholder="Select teacher"
+              options={teacherChoices(state.teachers.map((teacher) => teacher.name), name, cell.content.teachers)}
+              open={open === `teacher-${index}`}
+              onToggle={() => setOpen(open === `teacher-${index}` ? null : `teacher-${index}`)}
+              onPick={(option) => setTeacher(index, option)}
+              allowClear={Boolean(name)}
             />
-            {teacherFocus && teacherOptions.length > 0 ? (
-              <ul className="suggest-list">
-                {teacherOptions.map((teacher) => (
-                  <li key={teacher.id}>
-                    <button
-                      type="button"
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        addTeacher(teacher.name);
-                        setTeacherFocus(false);
-                      }}
-                    >
-                      {teacher.name}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+            {index > 0 ? (
+              <button type="button" className="tiny-x" aria-label="Remove teacher" onClick={() => setTeacher(index, "")}>
+                ×
+              </button>
             ) : null}
           </div>
-          <Button type="submit" tone="primary">
-            Add
-          </Button>
-        </form>
-        <p className="hint">
-          Prints as {joinWithAnd(cell.content.teachers) || "a blank teacher line"}.
-        </p>
+        ))}
+        <button
+          type="button"
+          className="add-teacher"
+          onClick={() => {
+            if (cell.content.teachers.length === 0) {
+              setOpen("teacher-0");
+              return;
+            }
+            setExtraTeacher(true);
+            setOpen(`teacher-${cell.content.teachers.length}`);
+          }}
+        >
+          + teacher
+        </button>
       </div>
-      <div className="mt-3 flex flex-wrap items-end gap-3">
-        <label>
-          <span className="field-label">Merge</span>
-          <select
-            className="field"
-            value={cell.span}
-            disabled={maxSpan < 2 && cell.span < 2}
+      <div className="module-picks">
+        <Pick
+          label="Module number"
+          value={moduleNumber}
+          placeholder="M-7"
+          options={withCurrent(state.moduleNumbers, moduleNumber)}
+          open={open === "module"}
+          onToggle={() => setOpen(open === "module" ? null : "module")}
+          onPick={(option) => setParts(option, subNumber)}
+          allowClear={Boolean(moduleNumber)}
+        />
+        <Pick
+          label="Sub-number"
+          value={subNumber}
+          placeholder=".04"
+          options={withCurrent(state.subNumbers, subNumber)}
+          open={open === "sub"}
+          onToggle={() => setOpen(open === "sub" ? null : "sub")}
+          onPick={(option) => setParts(moduleNumber, option)}
+          allowClear={Boolean(subNumber)}
+        />
+        <div className="code-chip" aria-label="Module code">
+          {cell.content.code.trim() || "M-"}
+        </div>
+      </div>
+      <div className="cell-foot">
+        <label className="merge-toggle">
+          <input
+            type="checkbox"
+            checked={cell.span > 1}
+            disabled={!canMerge}
             onChange={(event) =>
               dispatch({
                 type: "set-span",
                 dayId: day.id,
                 batchId,
                 sessionId: cell.anchorId,
-                span: Number(event.target.value),
+                span: event.target.checked ? Math.min(2, maxSpan) : 1,
               })
             }
-          >
-            {Array.from({ length: Math.max(cell.span, maxSpan) }, (_, index) => index + 1).map(
-              (span) => (
-                <option key={span} value={span}>
-                  {span === 1 ? "This session only" : `${span} adjacent sessions`}
-                </option>
-              ),
-            )}
-          </select>
+          />
+          Merge with next
         </label>
-        {cell.span > 1 ? (
-          <Button
-            tone="danger"
-            onClick={() =>
-              dispatch({
-                type: "set-span",
-                dayId: day.id,
-                batchId,
-                sessionId: cell.anchorId,
-                span: 1,
-              })
-            }
-          >
-            Unmerge
-          </Button>
-        ) : null}
-        {maxSpan < 2 ? (
-          <p className="text-xs text-stone-500">A break sits beside this session, so it cannot merge sideways.</p>
-        ) : null}
+        <button type="button" className="more-link" aria-expanded={more} onClick={() => setMore((value) => !value)}>
+          {more ? "Less" : "More"}
+        </button>
       </div>
-      <Button
-        tone="quiet"
-        className="mt-2"
-        onClick={() =>
-          dispatch({
-            type: "add-module",
-            code: cell.content.code,
-            title: cell.content.note,
-          })
-        }
+      {more ? (
+        <div className="more-fields">
+          <label className="block">
+            <span className="field-label">Note</span>
+            <input
+              className="field"
+              value={cell.content.note}
+              placeholder="(Theory)"
+              onChange={(event) => update({ ...cell.content, note: event.target.value })}
+            />
+          </label>
+          <label className="block">
+            <span className="field-label">Module text</span>
+            <input
+              className="field"
+              value={cell.content.code}
+              placeholder="M- 7.04"
+              onChange={(event) => update({ ...cell.content, code: event.target.value })}
+            />
+          </label>
+          {maxSpan > 2 || cell.span > 2 ? (
+            <label className="block">
+              <span className="field-label">Merged sessions</span>
+              <select
+                className="field"
+                value={cell.span}
+                onChange={(event) =>
+                  dispatch({
+                    type: "set-span",
+                    dayId: day.id,
+                    batchId,
+                    sessionId: cell.anchorId,
+                    span: Number(event.target.value),
+                  })
+                }
+              >
+                {Array.from({ length: Math.max(cell.span, maxSpan) }, (_, index) => index + 1).map((span) => (
+                  <option key={span} value={span}>
+                    {span === 1 ? "This session only" : `${span} sessions`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function teacherChoices(catalog: string[], current: string, selected: string[]): string[] {
+  const taken = new Set(selected.filter((name) => name && name !== current).map((name) => name.toLowerCase()));
+  const options = catalog.filter((name) => !taken.has(name.toLowerCase()));
+  if (current && !options.some((name) => name.toLowerCase() === current.toLowerCase())) options.unshift(current);
+  return options;
+}
+
+function withCurrent(options: string[], current: string): string[] {
+  if (!current || options.includes(current)) return options;
+  return [current, ...options];
+}
+
+function Pick({
+  label,
+  value,
+  placeholder,
+  options,
+  open,
+  onToggle,
+  onPick,
+  allowClear,
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  options: string[];
+  open: boolean;
+  onToggle: () => void;
+  onPick: (option: string) => void;
+  allowClear: boolean;
+}) {
+  return (
+    <div className="pick">
+      <span className="field-label">{label}</span>
+      <button
+        type="button"
+        className="pick-btn"
+        aria-label={label}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={onToggle}
       >
-        Save this module to the library
-      </Button>
+        <span className={value ? "" : "pick-placeholder"}>{value || placeholder}</span>
+        <ChevronDown size={14} />
+      </button>
+      {open ? (
+        <ul className="pick-menu" role="listbox" aria-label={label}>
+          {allowClear ? (
+            <li>
+              <button type="button" role="option" onClick={() => onPick("")}>
+                —
+              </button>
+            </li>
+          ) : null}
+          {options.length === 0 ? (
+            <li className="pick-empty">Add names in Settings</li>
+          ) : (
+            options.map((option) => (
+              <li key={option}>
+                <button type="button" role="option" aria-selected={option === value} onClick={() => onPick(option)}>
+                  {option}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      ) : null}
     </div>
   );
 }

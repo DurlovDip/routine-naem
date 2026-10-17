@@ -65,3 +65,64 @@ export function sessionSpanLabel(numbers: number[]): string {
   if (numbers.length === 1) return `Session - ${numbers[0]}`;
   return `Session - ${numbers[0]} to Session - ${numbers[numbers.length - 1]}`;
 }
+
+export function normalizeModuleNumber(value: string): string {
+  const match = value.trim().match(/^(?:M-\s*)?(\d+)/i);
+  if (!match) return "";
+  return `M-${Number(match[1])}`;
+}
+
+export function normalizeSubNumber(value: string): string {
+  const match = value.trim().match(/^\.?(\d+)$/);
+  if (!match) return "";
+  return `.${match[1].padStart(2, "0")}`;
+}
+
+export function parseModuleCode(code: string): { moduleNumber: string; subNumber: string } | null {
+  const full = code.trim().match(/^M-\s*(\d+)\.(\d+)$/i);
+  if (full) {
+    return {
+      moduleNumber: `M-${Number(full[1])}`,
+      subNumber: `.${full[2].padStart(2, "0")}`,
+    };
+  }
+  const major = code.trim().match(/^M-\s*(\d+)$/i);
+  if (!major) return null;
+  return { moduleNumber: `M-${Number(major[1])}`, subNumber: "" };
+}
+
+export function formatModuleCode(moduleNumber: string, subNumber: string): string {
+  const major = normalizeModuleNumber(moduleNumber);
+  const sub = normalizeSubNumber(subNumber);
+  if (!major) return "";
+  const digits = major.slice(2);
+  if (!sub) return `M- ${digits}`;
+  return `M- ${digits}${sub}`;
+}
+
+function byNumber(a: string, b: string): number {
+  return Number(a.replace(/[^\d]/g, "")) - Number(b.replace(/[^\d]/g, ""));
+}
+
+export function sortModuleNumbers(values: string[]): string[] {
+  return [...new Set(values.map(normalizeModuleNumber).filter(Boolean))].sort(byNumber);
+}
+
+export function sortSubNumbers(values: string[]): string[] {
+  return [...new Set(values.map(normalizeSubNumber).filter(Boolean))].sort(byNumber);
+}
+
+export function catalogFromModules(modules: { code: string }[]): {
+  moduleNumbers: string[];
+  subNumbers: string[];
+} {
+  const numbers: string[] = [];
+  const subs: string[] = [];
+  for (const module of modules) {
+    const parsed = parseModuleCode(module.code);
+    if (!parsed) continue;
+    numbers.push(parsed.moduleNumber);
+    subs.push(parsed.subNumber);
+  }
+  return { moduleNumbers: sortModuleNumbers(numbers), subNumbers: sortSubNumbers(subs) };
+}
