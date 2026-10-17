@@ -6,6 +6,7 @@ import { cleanBatchNumber, joinWithAnd, parseRoster, rosterRange } from "../lib/
 import { formatClock, formatRange, formatSignatureDate, toIsoDate } from "../lib/time";
 import { STANDARD_DESIGNATIONS, type Batch, type DayPlan, type HeaderStyle } from "../lib/types";
 import { useSchedule } from "../state";
+import { DesignationManager, useDesignations } from "../designations";
 import { Button, Field } from "./ui";
 
 function IconButton({
@@ -422,6 +423,7 @@ export function HeaderEditor() {
 
 export function LibraryEditor() {
   const { state, dispatch } = useSchedule();
+  const designations = useDesignations();
   const [teacher, setTeacher] = useState("");
   const [teacherDesignation, setTeacherDesignation] = useState<string>("Assistant Director");
   const [moduleNumber, setModuleNumber] = useState("");
@@ -429,6 +431,7 @@ export function LibraryEditor() {
 
   return (
     <div className="settings-panel">
+      <DesignationManager />
       <div>
         <div className="field-label">Teachers</div>
         <p className="hint mb-2">Teacher names and official designations.</p>
@@ -457,15 +460,11 @@ export function LibraryEditor() {
                 }
               >
                 <option value="">(No Designation)</option>
-                {STANDARD_DESIGNATIONS.map((des) => (
+                {designations.names.map((des) => (
                   <option key={des} value={des}>
                     {des}
                   </option>
                 ))}
-                {item.designation &&
-                  !STANDARD_DESIGNATIONS.includes(item.designation as any) && (
-                    <option value={item.designation}>{item.designation}</option>
-                  )}
               </select>
               <IconButton
                 label={`Remove ${item.name}`}
@@ -502,7 +501,7 @@ export function LibraryEditor() {
             onChange={(event) => setTeacherDesignation(event.target.value)}
           >
             <option value="">(No Designation)</option>
-            {STANDARD_DESIGNATIONS.map((des) => (
+            {designations.names.map((des) => (
               <option key={des} value={des}>
                 {des}
               </option>

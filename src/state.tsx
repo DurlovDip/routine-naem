@@ -57,7 +57,6 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   );
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const day = activeDay(state);
-  const isInitialMount = useRef(true);
   const skipCloudSave = useRef(false);
   const stateRef = useRef(state);
   useEffect(() => {
@@ -72,19 +71,18 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(timer);
   }, [state]);
 
+  // False until the first cloud read settles. Strict Mode runs effects twice on
+  // mount; saving before that second pass uploads the empty local schedule.
+  const cloudReady = useRef(false);
+
   // Cloud sync debounced persistence
   useEffect(() => {
-    if (!canWrite) {
+    if (!canWrite || !cloudReady.current) {
       return;
     }
 
     if (skipCloudSave.current) {
       skipCloudSave.current = false;
-      return;
-    }
-
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
       return;
     }
 
@@ -142,6 +140,8 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       setSyncStatus("saving");
       const remote = await loadRemoteSchedule();
       if (!mounted) return;
+
+      cloudReady.current = true;
 
       if (remote.error) {
         setSyncStatus("error");

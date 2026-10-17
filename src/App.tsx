@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { CopyPlus, FileDown, LogIn, LogOut, Menu, Printer, Trash2, X } from "lucide-react";
 import { AuthProvider, useAuth } from "./auth";
+import { DesignationsProvider } from "./designations";
 import { PeopleSection } from "./components/AccessPanels";
 import { AuthScreen } from "./components/AuthScreen";
 import { BatchEditor, FooterEditor, HeaderEditor, LibraryEditor, StructureEditor } from "./components/panels";
@@ -327,7 +328,11 @@ function Gate() {
     );
   }
   if (auth.required && !auth.session) return <AuthScreen />;
-  return <Shell />;
+  return (
+    <DesignationsProvider>
+      <Shell />
+    </DesignationsProvider>
+  );
 }
 
 export default function App() {

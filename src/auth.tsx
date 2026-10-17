@@ -158,30 +158,84 @@ export const HARDCODED_SUPERADMIN_SESSION: SessionView = {
 
 const HARDCODED_ADMIN_STORAGE_KEY = "routine-naem-hardcoded-admin";
 
-function getHardcodedSuperadminSession(): SessionView | null {
+function shortcutRequested(): boolean {
   try {
-    if (typeof window !== "undefined" && localStorage.getItem(HARDCODED_ADMIN_STORAGE_KEY) === "true") {
-      return HARDCODED_SUPERADMIN_SESSION;
-    }
+    return typeof window !== "undefined" && localStorage.getItem(HARDCODED_ADMIN_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function rememberShortcut() {
+  try {
+    localStorage.setItem(HARDCODED_ADMIN_STORAGE_KEY, "true");
   } catch {
     // ignore
   }
-  return null;
+}
+
+let shortcutOpen: Promise<SessionView> | null = null;
+
+async function openShortcutAccount(): Promise<SessionView> {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  if (!shortcutOpen) {
+    shortcutOpen = openShortcutAccountOnce().finally(() => {
+      shortcutOpen = null;
+    });
+  }
+  return shortcutOpen;
+}
+
+async function openShortcutAccountOnce(): Promise<SessionView> {
+  if (!supabase) throw new Error("Supabase is not configured.");
+  const email = syntheticEmail(HARDCODED_SUPERADMIN.username);
+  const password = HARDCODED_SUPERADMIN.password;
+  const current = await supabase.auth.getSession();
+  const currentEmail = current.data.session?.user.email?.toLowerCase();
+  if (currentEmail !== email) {
+    const signedIn = await supabase.auth.signInWithPassword({ email, password });
+    if (signedIn.error) {
+      const created = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { username: "superadmin", teacher_id: "superadmin" } },
+      });
+      if (created.error) {
+        throw new Error(
+          `${created.error.message} Run supabase/migration_superadmin_account.sql in the Supabase SQL editor, then sign in again.`,
+        );
+      }
+      if (!created.data.session) {
+        const again = await supabase.auth.signInWithPassword({ email, password });
+        if (again.error) {
+          throw new Error("Turn off Confirm email for the superadmin@routine.local account, then sign in again.");
+        }
+      }
+    }
+  }
+  const view = await readSupabaseSession();
+  if (!view) {
+    throw new Error("Run supabase/migration_superadmin_account.sql so superadmin@routine.local is a super admin.");
+  }
+  return view;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<SessionView | null>(
-    () => getHardcodedSuperadminSession() || (isAuthMock ? mockSession() : null),
-  );
-  const [ready, setReady] = useState(
-    () => isAuthMock || !isSupabaseConfigured || Boolean(getHardcodedSuperadminSession()),
-  );
+  const [session, setSession] = useState<SessionView | null>(() => (isAuthMock ? mockSession() : null));
+  const [ready, setReady] = useState(() => isAuthMock || !isSupabaseConfigured);
   const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (getHardcodedSuperadminSession()) {
-      setSession(HARDCODED_SUPERADMIN_SESSION);
-      setReady(true);
+    if (!isAuthMock && supabase && shortcutRequested()) {
+      try {
+        setSession(await openShortcutAccount());
+        setNotice(null);
+      } catch (err) {
+        setSession(null);
+        setNotice(err instanceof Error ? err.message : String(err));
+      } finally {
+        setReady(true);
+      }
       return;
     }
     if (isAuthMock) {
@@ -217,18 +271,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async (username: string, password: string) => {
     const normalized = normalizeUsername(username);
 
-    // Hardcoded Super Admin credentials
-    if (normalized === "superadmin") {
-      if (password === "19521971") {
-        try {
-          localStorage.setItem(HARDCODED_ADMIN_STORAGE_KEY, "true");
-        } catch {
-          // ignore
+    if (normalized === HARDCODED_SUPERADMIN.username) {
+      if (password !== HARDCODED_SUPERADMIN.password) return "Incorrect password for superadmin.";
+      rememberShortcut();
+      try {
+        if (isAuthMock) {
+          setSession(mockSignIn(normalized, password));
+          return null;
         }
-        setSession(HARDCODED_SUPERADMIN_SESSION);
+        if (!supabase) return "Supabase is not configured.";
+        setSession(await openShortcutAccount());
         return null;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
       }
-      return "Incorrect password for superadmin.";
     }
 
     const problem = usernameError(normalized);
@@ -244,6 +300,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       });
       if (error) return error.message;
+      try {
+        localStorage.removeItem(HARDCODED_ADMIN_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
       setSession(await readSupabaseSession());
       return null;
     } catch (err) {
@@ -271,6 +332,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         options: { data: { username, teacher_id: input.teacherId } },
       });
       if (error) return error.message;
+      try {
+        localStorage.removeItem(HARDCODED_ADMIN_STORAGE_KEY);
+      } catch {
+        // ignore
+      }
       setSession(await readSupabaseSession());
       return null;
     } catch (err) {
@@ -409,7 +475,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           start_on: roleStart,
           end_on: roleEnd,
         });
-        if (!error && !getHardcodedSuperadminSession()) setSession(await readSupabaseSession());
+        if (!error) setSession(await readSupabaseSession());
         return rpcError(error);
       } catch (err) {
         return err instanceof Error ? err.message : String(err);

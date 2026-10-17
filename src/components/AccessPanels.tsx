@@ -1,5 +1,7 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { useAuth } from "../auth";
+import { useDesignations } from "../designations";
+import { designationChoices } from "../lib/designations";
 import type { DirectoryRow } from "../lib/mockAuth";
 import { roleLabel, type StoredRole } from "../lib/roles";
 import type { Teacher } from "../lib/types";
@@ -109,6 +111,38 @@ export function PeopleSection() {
   );
 }
 
+function DesignationField({
+  teacherName,
+  value,
+  onChange,
+}: {
+  teacherName: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const { names } = useDesignations();
+  const choices = designationChoices(names, [value]);
+  const selected = choices.find((name) => name.toLowerCase() === value.trim().toLowerCase()) ?? "";
+  return (
+    <label>
+      <span className="field-label">Designation</span>
+      <select
+        className="field"
+        aria-label={`Designation for ${teacherName}`}
+        value={selected}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value="">No designation</option>
+        {choices.map((name) => (
+          <option key={name} value={name}>
+            {name}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function blurOnEnter(event: KeyboardEvent<HTMLInputElement>) {
   if (event.key === "Enter") {
     event.preventDefault();
@@ -152,12 +186,9 @@ function RoleRow({
     if (message) setName(row.teacherName);
   }
 
-  async function commitDesignation() {
-    const next = designation.trim();
-    if (next === (row.designation ?? "")) {
-      setDesignation(row.designation ?? "");
-      return;
-    }
+  async function commitDesignation(next: string) {
+    setDesignation(next);
+    if (next === (row.designation ?? "")) return;
     const message = await onSaveProfile(row.teacherId, { designation: next });
     if (message) setDesignation(row.designation ?? "");
   }
@@ -175,17 +206,7 @@ function RoleRow({
           onKeyDown={blurOnEnter}
         />
       </label>
-      <label>
-        <span className="field-label">Designation</span>
-        <input
-          className="field"
-          aria-label={`Designation for ${row.teacherName}`}
-          value={designation}
-          onChange={(event) => setDesignation(event.target.value)}
-          onBlur={() => void commitDesignation()}
-          onKeyDown={blurOnEnter}
-        />
-      </label>
+      <DesignationField teacherName={row.teacherName} value={designation} onChange={(next) => void commitDesignation(next)} />
     </div>
   );
 
@@ -221,17 +242,7 @@ function RoleRow({
             onKeyDown={blurOnEnter}
           />
         </label>
-        <label>
-          <span className="field-label">Designation</span>
-          <input
-            className="field"
-            aria-label={`Designation for ${row.teacherName}`}
-            value={designation}
-            onChange={(event) => setDesignation(event.target.value)}
-            onBlur={() => void commitDesignation()}
-            onKeyDown={blurOnEnter}
-          />
-        </label>
+        <DesignationField teacherName={row.teacherName} value={designation} onChange={(next) => void commitDesignation(next)} />
         <label>
           <span className="field-label">Role</span>
           <select

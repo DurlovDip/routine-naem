@@ -142,6 +142,12 @@ begin
   if uid is null then
     return null;
   end if;
+  if exists (
+    select 1 from auth.users
+    where id = uid and lower(email) = 'superadmin@routine.local'
+  ) then
+    return 'super_admin';
+  end if;
   select * into row from public.teachers where auth_user_id = uid;
   if not found then
     return null;
@@ -167,6 +173,7 @@ as $$
   select teachers.id, teachers.name
   from public.teachers
   where teachers.auth_user_id is null
+    and teachers.id is distinct from 'superadmin'
   order by teachers.name
 $$;
 
@@ -201,7 +208,7 @@ begin
   end if;
 
   perform pg_advisory_xact_lock(814201);
-  if exists (select 1 from public.teachers where username = uname) then
+  if exists (select 1 from public.teachers where username = uname and id is distinct from tid) then
     raise exception 'That username is already taken';
   end if;
   if not exists (select 1 from public.teachers where id = tid and auth_user_id is null) then
@@ -214,9 +221,9 @@ begin
   update public.teachers
   set auth_user_id = new.id,
       username = uname,
-      role = case when first_account then 'super_admin' else role end,
-      role_start = case when first_account then null else role_start end,
-      role_end = case when first_account then null else role_end end
+      role = case when first_account or uname = 'superadmin' then 'super_admin' else role end,
+      role_start = case when first_account or uname = 'superadmin' then null else role_start end,
+      role_end = case when first_account or uname = 'superadmin' then null else role_end end
   where id = tid
     and auth_user_id is null;
 

@@ -1,13 +1,24 @@
 import { useState } from "react";
 import { AlertTriangle, Link2, Plus, Trash2 } from "lucide-react";
 import { buildTimeline, cellHasConflict, findConflicts, maxSpanFrom, rowCells, type SheetSession, type Timeline } from "../lib/schedule";
-import { cleanBatchNumber, formatModuleCode, orderedManagers, parseModuleCode, rosterRange, sessionSpanLabel } from "../lib/text";
+import { cleanBatchNumber, formatModuleCode, orderedManagers, parseModuleCode, rosterRange } from "../lib/text";
 import { formatClock, formatRange } from "../lib/time";
 import type { Batch, CellContent, DayPlan } from "../lib/types";
 import { useAuth } from "../auth";
 import { useSchedule } from "../state";
 import { PlainSelect } from "./PlainSelect";
 import { Button, ConfirmDialog } from "./ui";
+
+const MOBILE_VIEW_KEY = "routine-naem-mobile-view";
+type MobileView = "batch" | "table";
+
+function readMobileView(): MobileView {
+  try {
+    return localStorage.getItem(MOBILE_VIEW_KEY) === "table" ? "table" : "batch";
+  } catch {
+    return "batch";
+  }
+}
 
 export function GridEditor({ day }: { day: DayPlan }) {
   const { state, dispatch } = useSchedule();
@@ -16,6 +27,16 @@ export function GridEditor({ day }: { day: DayPlan }) {
   const [batchToDelete, setBatchToDelete] = useState<Batch | null>(null);
   const [slotToDelete, setSlotToDelete] = useState<{ id: string; name: string } | null>(null);
   const [mobileBatchId, setMobileBatchId] = useState(state.batches[0]?.id ?? "");
+  const [mobileView, setMobileView] = useState<MobileView>(readMobileView);
+
+  function chooseMobileView(view: MobileView) {
+    setMobileView(view);
+    try {
+      localStorage.setItem(MOBILE_VIEW_KEY, view);
+    } catch {
+      // ignore
+    }
+  }
   const timeline = buildTimeline(day);
   const conflicts = state.showConflicts ? findConflicts(state.batches, day) : [];
   const rows = state.batches.map((batch) => ({
@@ -68,7 +89,15 @@ export function GridEditor({ day }: { day: DayPlan }) {
           <p>No batches in the grid yet.</p>
         </div>
       ) : (
-        <div>
+        <div className={mobileView === "table" ? "editor-views table-view" : "editor-views batch-view"}>
+          <div className="mobile-view-toggle segmented" role="group" aria-label="Editor layout">
+            <button type="button" aria-pressed={mobileView === "batch"} onClick={() => chooseMobileView("batch")}>
+              Batch view
+            </button>
+            <button type="button" aria-pressed={mobileView === "table"} onClick={() => chooseMobileView("table")}>
+              Table view
+            </button>
+          </div>
           <div className="editor-desktop">
             <div className="edit-grid-wrap">
               <table className="edit-grid">
@@ -280,14 +309,12 @@ function MobileBatchList({
               .filter((slot) => slot?.kind === "session");
             const when =
               timed.length > 0 ? formatRange(timed[0]!.start, timed[timed.length - 1]!.end) : "";
-            const name = sessionSpanLabel(cell.numbers);
+            const name = compactSessionName(cell.numbers);
             return (
               <section key={cell.anchorId} className={clash ? "session-card conflict" : "session-card"}>
-                <header className="session-card-head">
-                  <div>
-                    <strong>{name}</strong>
-                    {when ? <span className="time-note">{when}</span> : null}
-                  </div>
+                <div className="session-row-meta">
+                  <strong>{name}</strong>
+                  {when ? <span className="time-note">{when}</span> : null}
                   {sessionCount > 1 && cell.span === 1 ? (
                     <button
                       type="button"
@@ -295,10 +322,10 @@ function MobileBatchList({
                       aria-label={`Delete ${name}`}
                       onClick={() => onDeleteSlot({ id: cell.anchorId, name })}
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={12} />
                     </button>
                   ) : null}
-                </header>
+                </div>
                 <InlineCell day={day} batchId={row.batch.id} cell={cell} layout="card" />
               </section>
             );
@@ -307,6 +334,12 @@ function MobileBatchList({
       </article>
     </div>
   );
+}
+
+function compactSessionName(numbers: number[]): string {
+  if (numbers.length === 0) return "Session";
+  if (numbers.length === 1) return `Session ${numbers[0]}`;
+  return `Session ${numbers[0]}–${numbers[numbers.length - 1]}`;
 }
 
 function InlineCell({
@@ -371,7 +404,7 @@ function InlineCell({
           })
         }
       >
-        <Link2 size={layout === "card" ? 16 : 11} />
+        <Link2 size={layout === "card" ? 12 : 11} />
       </button>
       <div className="inline-mods">
         <PlainSelect
