@@ -17,6 +17,7 @@ create policy "Allow public all teachers" on public.teachers for all using (true
 
 -- 2. Modules Table
 -- id is integer, module_number, module_subnumber, module_name (blank initially)
+-- Re-running this DROP erases existing module rows.
 drop table if exists public.modules cascade;
 
 create table public.modules (

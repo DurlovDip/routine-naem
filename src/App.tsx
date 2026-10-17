@@ -1,10 +1,14 @@
 import { useRef, useState } from "react";
-import { CopyPlus, FileDown, Menu, Printer, Trash2, X } from "lucide-react";
+import { CopyPlus, FileDown, LogOut, Menu, Printer, Trash2, X } from "lucide-react";
+import { AuthProvider, useAuth } from "./auth";
+import { DelegationSection, PeopleSection } from "./components/AccessPanels";
+import { AuthScreen } from "./components/AuthScreen";
 import { BatchEditor, FooterEditor, HeaderEditor, LibraryEditor, StructureEditor } from "./components/panels";
 import { GridEditor } from "./components/GridEditor";
 import { PreviewPane } from "./components/PreviewPane";
 import { Button, ConfirmDialog, Section } from "./components/ui";
 import { downloadScheduleDocx } from "./lib/docx";
+import { roleLabel } from "./lib/roles";
 import { joinWithAnd, rotateIds } from "./lib/text";
 import { formatDayNumber, formatSlashDate, weekdayName } from "./lib/time";
 import { SyncStatusButton } from "./components/SyncStatus";
@@ -18,12 +22,15 @@ function readHash(): Mode {
 
 function Shell() {
   const { state, dispatch, day } = useSchedule();
+  const auth = useAuth();
+  const canEdit = !auth.required || auth.session?.role === "super_admin" || auth.session?.role === "coordinator";
   const [mode, setMode] = useState<Mode>(() => readHash());
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
-  const showEditor = mode !== "preview";
-  const showPreview = mode !== "edit";
+  const view: Mode = canEdit ? mode : "preview";
+  const showEditor = view !== "preview";
+  const showPreview = view !== "edit";
 
   const nextIds = state.batches.map((batch) =>
     joinWithAnd(rotateIds(batch.roster, day.managers[batch.id] ?? [])),
@@ -36,7 +43,9 @@ function Shell() {
       <header className="toolbar no-print">
         <div className="brand">
           <div className="brand-title">Daily Schedule</div>
-          <div className="brand-sub">Class routine for the training course</div>
+          <div className="brand-sub">
+            {auth.session ? `${auth.session.teacherName} · ${roleLabel(auth.session.role)}` : "Class routine for the training course"}
+          </div>
         </div>
         <button
           type="button"
@@ -48,23 +57,27 @@ function Shell() {
           {menuOpen ? <X size={18} /> : <Menu size={18} />}
         </button>
         <div className={menuOpen ? "toolbar-collapse open" : "toolbar-collapse"}>
-          <div className="segmented" role="group" aria-label="View">
-            {(["edit", "preview"] as const).map((item) => (
-              <button
-                key={item}
-                type="button"
-                aria-pressed={mode === item}
-                onClick={() => {
-                  setMode(item);
-                  setMenuOpen(false);
-                }}
-              >
-                {item === "edit" ? "Editor" : "Preview"}
-              </button>
-            ))}
-          </div>
+          {canEdit ? (
+            <div className="segmented" role="group" aria-label="View">
+              {(["edit", "preview"] as const).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  aria-pressed={view === item}
+                  onClick={() => {
+                    setMode(item);
+                    setMenuOpen(false);
+                  }}
+                >
+                  {item === "edit" ? "Editor" : "Preview"}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="role-chip">View only</div>
+          )}
           <div className="toolbar-actions">
-            <SyncStatusButton />
+            {canEdit ? <SyncStatusButton /> : null}
             <Button
               tone="primary"
               onClick={() => {
@@ -82,6 +95,16 @@ function Shell() {
             >
               <FileDown size={16} /> Print / DOCX
             </Button>
+            {auth.session ? (
+              <Button
+                onClick={() => {
+                  setMenuOpen(false);
+                  void auth.signOut();
+                }}
+              >
+                <LogOut size={16} /> Sign out
+              </Button>
+            ) : null}
           </div>
         </div>
       </header>
@@ -173,6 +196,16 @@ function Shell() {
             <div className="px-4 py-4">
               <GridEditor day={day} />
             </div>
+            {auth.session?.role === "super_admin" ? (
+              <Section title="People" summary="Accounts and coordinators">
+                <PeopleSection />
+              </Section>
+            ) : null}
+            {auth.session && auth.session.role !== "teacher" ? (
+              <Section title="Hand off coordination" summary="Transfer or delegate">
+                <DelegationSection />
+              </Section>
+            ) : null}
             <Section title="Settings" summary="Teachers and modules">
               <LibraryEditor />
             </Section>
@@ -219,10 +252,25 @@ function Shell() {
   );
 }
 
+function Gate() {
+  const auth = useAuth();
+  if (!auth.ready) {
+    return (
+      <div className="auth-shell">
+        <p className="auth-lead">Checking session…</p>
+      </div>
+    );
+  }
+  if (auth.required && !auth.session) return <AuthScreen />;
+  return <Shell />;
+}
+
 export default function App() {
   return (
-    <ScheduleProvider>
-      <Shell />
-    </ScheduleProvider>
+    <AuthProvider>
+      <ScheduleProvider>
+        <Gate />
+      </ScheduleProvider>
+    </AuthProvider>
   );
 }

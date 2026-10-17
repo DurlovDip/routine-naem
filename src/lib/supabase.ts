@@ -15,7 +15,14 @@ export const isSupabaseConfigured = Boolean(
 );
 
 export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(supabaseUrl!, supabaseAnonKey!)
+  ? createClient(supabaseUrl!, supabaseAnonKey!, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: false,
+        storage: typeof window === "undefined" ? undefined : window.localStorage,
+      },
+    })
   : null;
 
 export const SCHEDULE_ROW_ID = "default";
@@ -28,8 +35,8 @@ export const BATCHES_TABLE = "batches";
  * Fetch remote state from Supabase, integrating relational tables
  * (teachers, modules, batches) with the main schedule document.
  */
-export async function fetchRemoteSchedule(): Promise<AppState | null> {
-  if (!supabase) return null;
+export async function loadRemoteSchedule(): Promise<{ state: AppState | null; error: string | null }> {
+  if (!supabase) return { state: null, error: null };
   try {
     const [scheduleRes, teachersRes, modulesRes, batchesRes] = await Promise.all([
       supabase.from(SCHEDULE_TABLE).select("data").eq("id", SCHEDULE_ROW_ID).maybeSingle(),
@@ -37,6 +44,12 @@ export async function fetchRemoteSchedule(): Promise<AppState | null> {
       supabase.from(MODULES_TABLE).select("id, module_number, module_subnumber, module_name").order("id"),
       supabase.from(BATCHES_TABLE).select("id, name, number_of_students").order("id"),
     ]);
+
+    const failure = scheduleRes.error || teachersRes.error || modulesRes.error || batchesRes.error;
+    if (failure) {
+      console.warn("Supabase read failed:", failure.message);
+      return { state: null, error: failure.message };
+    }
 
     let baseState: AppState | null = null;
     if (scheduleRes.data && scheduleRes.data.data) {
@@ -50,7 +63,7 @@ export async function fetchRemoteSchedule(): Promise<AppState | null> {
     );
 
     if (!baseState) {
-      if (!hasRelational) return null;
+      if (!hasRelational) return { state: null, error: null };
       baseState = createDemoState();
     }
 
@@ -111,11 +124,16 @@ export async function fetchRemoteSchedule(): Promise<AppState | null> {
       });
     }
 
-    return baseState;
+    return { state: baseState, error: null };
   } catch (err) {
     console.warn("Failed to connect to Supabase:", err);
-    return null;
+    return { state: null, error: err instanceof Error ? err.message : String(err) };
   }
+}
+
+export async function fetchRemoteSchedule(): Promise<AppState | null> {
+  const result = await loadRemoteSchedule();
+  return result.state;
 }
 
 async function syncTeachers(teachers: Teacher[], timestamp: string) {
@@ -258,15 +276,9 @@ export function subscribeToRemoteSchedule(
           table: SCHEDULE_TABLE,
           filter: `id=eq.${SCHEDULE_ROW_ID}`,
         },
-        async (payload) => {
-          const raw =
-            payload.new && typeof payload.new === "object" && "data" in payload.new
-              ? (payload.new as { data: unknown }).data
-              : null;
-          if (raw) {
-            const next = normalizeState(raw);
-            if (next) onUpdate(next);
-          }
+        async () => {
+          const latest = await fetchRemoteSchedule();
+          if (latest) onUpdate(latest);
         },
       )
       .on(

@@ -1,4 +1,7 @@
 -- ========================================================================
+-- WARNING: the modules and batches sections below DROP those tables.
+-- Re-running this file erases their rows. Prefer schema.sql on a new
+-- project, and do not re-run this after data exists.
 -- INCREMENTAL MIGRATION: Relational Tables (Teachers, Modules & Batches)
 -- Modules schema: id (integer), module_number, module_subnumber, module_name (default blank)
 -- Batches schema: id (integer), name (default blank), number_of_students (default 40)

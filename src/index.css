@@ -699,6 +699,53 @@ button { cursor: pointer; }
 
 .status { font-size: 0.75rem; color: var(--muted); }
 
+.auth-shell {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1rem 2.5rem;
+  background: var(--desk);
+}
+.auth-card {
+  width: min(26rem, 100%);
+  display: grid;
+  gap: 0.75rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 1.35rem 1.25rem 1.25rem;
+}
+.auth-card h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.auth-lead { margin: 0; color: var(--muted); font-size: 0.88rem; }
+.auth-card .segmented { width: 100%; }
+.auth-card .segmented button,
+.auth-card .field,
+.auth-card .btn { min-height: 44px; }
+.auth-card .btn { width: 100%; }
+.auth-error { margin: 0; color: #8c3a36; font-size: 0.82rem; }
+.role-chip { font-size: 0.8rem; color: var(--muted); padding: 0.35rem 0.2rem; }
+.access-panel { display: grid; gap: 0.75rem; }
+.account-list { list-style: none; margin: 0; padding: 0; }
+.account-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.account-row strong { display: block; font-weight: 600; }
+.account-row .hint { display: block; margin: 0.15rem 0 0; }
+.delegation-form { display: grid; gap: 0.7rem; }
+.delegation-form .segmented { width: 100%; }
+.delegation-form .segmented button { flex: 1; min-height: 44px; }
+
 .font-sheet { font-family: "Tinos", "Times New Roman", Times, serif; }
 .screen-hidden { display: none; }
 
@@ -800,7 +847,6 @@ button { cursor: pointer; }
 }
 
 @media (max-width: 640px) {
-  .brand-sub { display: none; }
   .toolbar { padding: 0.35rem 0.65rem; }
   .toolbar-menu-btn { display: inline-flex; }
   .toolbar-collapse {

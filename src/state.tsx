@@ -10,13 +10,14 @@ import {
   type Dispatch,
   type ReactNode,
 } from "react";
+import { isAuthMock, useAuth } from "./auth";
 import { createDemoState } from "./lib/demo";
 import { scheduleReducer, type Action } from "./lib/reducer";
 import { activeDay } from "./lib/schedule";
 import { loadState, saveState } from "./lib/storage";
 import {
-  fetchRemoteSchedule,
   isSupabaseConfigured,
+  loadRemoteSchedule,
   subscribeToRemoteSchedule,
   upsertRemoteSchedule,
 } from "./lib/supabase";
@@ -41,14 +42,20 @@ function initialState(): AppState {
 }
 
 export function ScheduleProvider({ children }: { children: ReactNode }) {
+  const auth = useAuth();
+  const cloudOn = isSupabaseConfigured && !isAuthMock;
+  const canWrite =
+    cloudOn && auth.ready && (!auth.required || auth.session?.role === "super_admin" || auth.session?.role === "coordinator");
+  const canRead = cloudOn && auth.ready && (!auth.required || Boolean(auth.session));
   const [state, dispatch] = useReducer(scheduleReducer, undefined, initialState);
   const [persistError, setPersistError] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(() =>
-    isSupabaseConfigured ? "connected" : "unconfigured",
+    cloudOn ? "connected" : "unconfigured",
   );
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const day = activeDay(state);
   const isInitialMount = useRef(true);
+  const skipCloudSave = useRef(false);
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
@@ -64,7 +71,12 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
 
   // Cloud sync debounced persistence
   useEffect(() => {
-    if (!isSupabaseConfigured) {
+    if (!canWrite) {
+      return;
+    }
+
+    if (skipCloudSave.current) {
+      skipCloudSave.current = false;
       return;
     }
 
@@ -90,26 +102,31 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     }, 600);
 
     return () => window.clearTimeout(timer);
-  }, [state]);
+  }, [state, canWrite]);
+
+  function applyRemote(next: AppState) {
+    skipCloudSave.current = true;
+    dispatch({ type: "replace", state: next });
+    saveState(next);
+  }
 
   // Manual refresh / pull
   const refreshFromCloud = useCallback(async () => {
-    if (!isSupabaseConfigured) return;
+    if (!canRead) return;
     setSyncStatus("saving");
-    const remote = await fetchRemoteSchedule();
-    if (remote) {
-      dispatch({ type: "replace", state: remote });
-      saveState(remote);
-      setSyncStatus("connected");
-      setLastSyncedAt(new Date());
-    } else {
+    const remote = await loadRemoteSchedule();
+    if (remote.error || !remote.state) {
       setSyncStatus("error");
+      return;
     }
-  }, []);
+    applyRemote(remote.state);
+    setSyncStatus("connected");
+    setLastSyncedAt(new Date());
+  }, [canRead]);
 
   // Initial load from cloud and realtime subscription setup
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
+    if (!canRead) return;
 
     let mounted = true;
 
@@ -120,21 +137,26 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       }
 
       setSyncStatus("saving");
-      const remote = await fetchRemoteSchedule();
+      const remote = await loadRemoteSchedule();
       if (!mounted) return;
 
-      if (remote) {
-        dispatch({ type: "replace", state: remote });
-        saveState(remote);
+      if (remote.error) {
+        setSyncStatus("error");
+        return;
+      }
+
+      if (remote.state) {
+        applyRemote(remote.state);
         setSyncStatus("connected");
         setLastSyncedAt(new Date());
-      } else {
-        // If table is empty, seed it with the current local state
+      } else if (canWrite) {
         const ok = await upsertRemoteSchedule(stateRef.current);
         if (mounted) {
           setSyncStatus(ok ? "connected" : "error");
           if (ok) setLastSyncedAt(new Date());
         }
+      } else if (mounted) {
+        setSyncStatus("connected");
       }
     }
 
@@ -143,8 +165,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     // Subscribe to remote changes from other clients
     const unsubscribe = subscribeToRemoteSchedule((remoteState) => {
       if (!mounted) return;
-      dispatch({ type: "replace", state: remoteState });
-      saveState(remoteState);
+      applyRemote(remoteState);
       setSyncStatus("connected");
       setLastSyncedAt(new Date());
     });
@@ -166,7 +187,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, []);
+  }, [canRead, canWrite]);
 
   const store = useMemo<Store>(
     () => ({

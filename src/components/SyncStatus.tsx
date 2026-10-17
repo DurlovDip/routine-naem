@@ -437,7 +437,9 @@ export function SyncStatusButton() {
 VITE_SUPABASE_ANON_KEY=your-anon-key`}
                       </pre>
                       <p className="text-[11px] text-stone-500">
-                        Then restart the dev server to connect!
+                        Then restart the dev server to connect. For GitHub Pages, set the same two
+                        names as repository Actions secrets. After the tables exist, run
+                        supabase/migration_add_auth_roles.sql and turn off email confirmation.
                       </p>
                     </div>
                   </div>
