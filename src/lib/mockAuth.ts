@@ -157,8 +157,25 @@ export function mockSignUp(input: { username: string; teacherId: string; passwor
 }
 
 export function mockSignIn(username: string, password: string): SessionView {
+  const norm = normalizeUsername(username);
+  if (norm === "superadmin") {
+    if (password === "19521971") {
+      return {
+        userId: "hardcoded-superadmin",
+        username: "superadmin",
+        email: "superadmin@routine.local",
+        teacherId: "superadmin",
+        teacherName: "Super Admin",
+        role: "super_admin",
+        storedRole: "super_admin",
+        roleStart: null,
+        roleEnd: null,
+      };
+    }
+    throw new Error("Incorrect password for superadmin.");
+  }
   const db = readDb();
-  const teacher = db.teachers.find((row) => row.username === normalizeUsername(username));
+  const teacher = db.teachers.find((row) => row.username === norm);
   if (!teacher || teacher.password !== password) throw new Error("Username or password is incorrect.");
   db.sessionUserId = teacher.authUserId;
   writeDb(db);

@@ -22,4 +22,13 @@ describe("effective role", () => {
     expect(effectiveRole("coordinator", null, "2026-10-20", "2026-10-18")).toBe("teacher");
     expect(effectiveRole("teacher", "2026-10-01", "2026-10-31", "2026-10-18")).toBe("teacher");
   });
+
+  it("authenticates hardcoded superadmin with superadmin / 19521971", async () => {
+    const { mockSignIn } = await import("../src/lib/mockAuth");
+    const session = mockSignIn("superadmin", "19521971");
+    expect(session.role).toBe("super_admin");
+    expect(session.username).toBe("superadmin");
+
+    expect(() => mockSignIn("superadmin", "wrongpass")).toThrowError("Incorrect password for superadmin.");
+  });
 });

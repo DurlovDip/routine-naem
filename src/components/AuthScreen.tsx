@@ -92,6 +92,7 @@ export function AuthScreen({
           <input
             className="field"
             name="username"
+            placeholder={tab === "signin" ? "e.g. superadmin" : "Choose username"}
             autoComplete="username"
             value={username}
             onChange={(event) => setUsername(event.target.value)}

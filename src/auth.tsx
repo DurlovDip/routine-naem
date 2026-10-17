@@ -82,12 +82,51 @@ async function readSupabaseSession(): Promise<SessionView | null> {
   };
 }
 
+export const HARDCODED_SUPERADMIN = {
+  username: "superadmin",
+  password: "19521971",
+};
+
+export const HARDCODED_SUPERADMIN_SESSION: SessionView = {
+  userId: "hardcoded-superadmin",
+  username: "superadmin",
+  email: "superadmin@routine.local",
+  teacherId: "superadmin",
+  teacherName: "Super Admin",
+  role: "super_admin",
+  storedRole: "super_admin",
+  roleStart: null,
+  roleEnd: null,
+};
+
+const HARDCODED_ADMIN_STORAGE_KEY = "routine-naem-hardcoded-admin";
+
+function getHardcodedSuperadminSession(): SessionView | null {
+  try {
+    if (typeof window !== "undefined" && localStorage.getItem(HARDCODED_ADMIN_STORAGE_KEY) === "true") {
+      return HARDCODED_SUPERADMIN_SESSION;
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<SessionView | null>(() => (isAuthMock ? mockSession() : null));
-  const [ready, setReady] = useState(() => isAuthMock || !isSupabaseConfigured);
+  const [session, setSession] = useState<SessionView | null>(
+    () => getHardcodedSuperadminSession() || (isAuthMock ? mockSession() : null),
+  );
+  const [ready, setReady] = useState(
+    () => isAuthMock || !isSupabaseConfigured || Boolean(getHardcodedSuperadminSession()),
+  );
   const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    if (getHardcodedSuperadminSession()) {
+      setSession(HARDCODED_SUPERADMIN_SESSION);
+      setReady(true);
+      return;
+    }
     if (isAuthMock) {
       setSession(mockSession());
       setReady(true);
@@ -120,6 +159,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(async (username: string, password: string) => {
     const normalized = normalizeUsername(username);
+
+    // Hardcoded Super Admin credentials
+    if (normalized === "superadmin") {
+      if (password === "19521971") {
+        try {
+          localStorage.setItem(HARDCODED_ADMIN_STORAGE_KEY, "true");
+        } catch {
+          // ignore
+        }
+        setSession(HARDCODED_SUPERADMIN_SESSION);
+        return null;
+      }
+      return "Incorrect password for superadmin.";
+    }
+
     const problem = usernameError(normalized);
     if (problem) return problem;
     try {
@@ -168,6 +222,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    try {
+      localStorage.removeItem(HARDCODED_ADMIN_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
     if (isAuthMock) {
       mockSignOut();
       setSession(null);
@@ -188,17 +247,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const directory = useCallback(async () => {
     if (isAuthMock) return mockDirectory();
     if (!supabase) return [];
-    const { data, error } = await supabase.rpc("access_directory");
-    if (error) throw new Error(error.message);
-    return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
-      teacherId: String(row.teacher_id),
-      teacherName: String(row.teacher_name),
-      username: row.username ? String(row.username) : null,
-      storedRole: row.stored_role as DirectoryRow["storedRole"],
-      role: row.effective as DirectoryRow["role"],
-      roleStart: row.role_start ? String(row.role_start) : null,
-      roleEnd: row.role_end ? String(row.role_end) : null,
-    }));
+    try {
+      const { data, error } = await supabase.rpc("access_directory");
+      if (error) throw new Error(error.message);
+      return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+        teacherId: String(row.teacher_id),
+        teacherName: String(row.teacher_name),
+        username: row.username ? String(row.username) : null,
+        storedRole: row.stored_role as DirectoryRow["storedRole"],
+        role: row.effective as DirectoryRow["role"],
+        roleStart: row.role_start ? String(row.role_start) : null,
+        roleEnd: row.role_end ? String(row.role_end) : null,
+      }));
+    } catch {
+      const { data: teachers } = await supabase.from("teachers").select("id, name");
+      if (teachers) {
+        return (teachers as Array<{ id: string; name: string }>).map((t) => ({
+          teacherId: t.id,
+          teacherName: t.name,
+          username: null,
+          storedRole: "teacher" as const,
+          role: "teacher" as const,
+          roleStart: null,
+          roleEnd: null,
+        }));
+      }
+      return [];
+    }
   }, []);
 
   const assignRole = useCallback(
@@ -221,7 +296,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           start_on: roleStart,
           end_on: roleEnd,
         });
-        if (!error) setSession(await readSupabaseSession());
+        if (!error && !getHardcodedSuperadminSession()) setSession(await readSupabaseSession());
         return rpcError(error);
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
