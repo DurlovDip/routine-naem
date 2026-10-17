@@ -61,9 +61,6 @@ export function GridEditor({ day }: { day: DayPlan }) {
       {state.batches.length === 0 ? (
         <div className="empty-grid">
           <p>No batches in the grid yet.</p>
-          <Button tone="primary" onClick={() => dispatch({ type: "add-batch" })}>
-            <Plus size={15} /> Add First Batch
-          </Button>
         </div>
       ) : (
         <div>
@@ -140,15 +137,6 @@ export function GridEditor({ day }: { day: DayPlan }) {
                     </tr>
                   ))}
                 </tbody>
-                <tfoot>
-                  <tr>
-                    <td colSpan={2 + timeline.slots.length} className="add-batch-row">
-                      <button type="button" className="add-batch-row-btn" onClick={() => dispatch({ type: "add-batch" })}>
-                        <Plus size={13} /> Add Batch
-                      </button>
-                    </td>
-                  </tr>
-                </tfoot>
               </table>
             </div>
           </div>
@@ -166,53 +154,6 @@ export function GridEditor({ day }: { day: DayPlan }) {
               sessionCount={sessionCount}
             />
           ) : null}
-
-          <div className="editor-footer">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button tone="ghost" className="text-xs" onClick={() => dispatch({ type: "add-batch" })}>
-                <Plus size={13} /> Add Batch
-              </Button>
-              <Button
-                tone="ghost"
-                className="text-xs"
-                disabled={sessionCount >= 10}
-                onClick={() => dispatch({ type: "add-session", dayId: day.id })}
-              >
-                <Plus size={13} /> Add Session
-              </Button>
-              {rows.length > 0 ? (
-                <Button
-                  tone="danger"
-                  className="text-xs"
-                  onClick={() => setBatchToDelete(rows[rows.length - 1].batch)}
-                  title={`Delete last batch (${rows[rows.length - 1].batch.name})`}
-                >
-                  <Trash2 size={12} /> Delete Last Batch
-                </Button>
-              ) : null}
-              {sessionCount > 1 ? (
-                <Button
-                  tone="danger"
-                  className="text-xs"
-                  onClick={() => {
-                    const lastSession = [...day.slots].reverse().find((slot) => slot.kind === "session");
-                    if (lastSession) {
-                      const timed = timeline.slots.find((slot) => slot.id === lastSession.id);
-                      const num = timed && timed.kind === "session" ? timed.number : "";
-                      setSlotToDelete({ id: lastSession.id, name: `Session - ${num}` });
-                    }
-                  }}
-                  title="Delete last session"
-                >
-                  <Trash2 size={12} /> Delete Last Session
-                </Button>
-              ) : null}
-            </div>
-            <span className="count-note">
-              {rows.length} {rows.length === 1 ? "batch" : "batches"} · {sessionCount}{" "}
-              {sessionCount === 1 ? "session" : "sessions"}
-            </span>
-          </div>
         </div>
       )}
 

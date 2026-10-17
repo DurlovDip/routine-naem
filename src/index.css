@@ -601,38 +601,6 @@ button { cursor: pointer; }
   white-space: nowrap;
 }
 
-.add-batch-row {
-  background: var(--paper);
-  padding: 0.35rem;
-  text-align: center;
-}
-.add-batch-row-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.35rem;
-  width: 100%;
-  padding: 0.4rem 0.5rem;
-  border-radius: 0.4rem;
-  border: 1px dashed var(--line);
-  background: var(--surface);
-  color: var(--muted);
-  font-weight: 550;
-  font-size: 0.75rem;
-  cursor: pointer;
-}
-.add-batch-row-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-
-.editor-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.6rem;
-  margin-top: 0.85rem;
-}
-.count-note { font-size: 0.75rem; color: var(--muted); }
-
 .editor-mobile { display: none; }
 
 .settings-panel { display: grid; gap: 1.15rem; }
@@ -866,7 +834,7 @@ button { cursor: pointer; }
   }
   .toolbar-collapse.open { display: flex; }
   .segmented, .toolbar-actions { width: 100%; }
-  .segmented button, .toolbar-actions .btn, .editor-tools .btn, .editor-footer .btn, .day-chip, .section-toggle, .add-batch-row-btn, .batch-picker button {
+  .segmented button, .toolbar-actions .btn, .editor-tools .btn, .day-chip, .section-toggle, .batch-picker button {
     min-height: 44px;
   }
   .segmented button { flex: 1; }
