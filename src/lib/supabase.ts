@@ -315,3 +315,132 @@ export function subscribeToRemoteSchedule(
     return null;
   }
 }
+
+export const BACKUPS_TABLE = "backups";
+
+export type BackupType = "teachers" | "batches" | "modules" | "schedules";
+export type BackupOperation = "INSERT" | "UPDATE" | "DELETE" | "SNAPSHOT";
+
+export interface BackupEntry {
+  id: number;
+  type: BackupType;
+  record_id: string | null;
+  data: Record<string, unknown>;
+  operation: BackupOperation | string;
+  created_at: string;
+}
+
+/**
+ * Fetch immutable backups for recovery or auditing.
+ */
+export async function fetchBackups(typeFilter?: BackupType, limit = 60): Promise<BackupEntry[]> {
+  if (!supabase) return [];
+  try {
+    let query = supabase
+      .from(BACKUPS_TABLE)
+      .select("id, type, record_id, data, operation, created_at")
+      .order("created_at", { ascending: false })
+      .limit(limit);
+
+    if (typeFilter) {
+      query = query.eq("type", typeFilter);
+    }
+
+    const { data, error } = await query;
+    if (error || !data) {
+      console.warn("Failed to fetch backups:", error);
+      return [];
+    }
+    return data as BackupEntry[];
+  } catch (err) {
+    console.warn("Error fetching backups:", err);
+    return [];
+  }
+}
+
+/**
+ * Restore an accidentally deleted or modified record from the backup system.
+ */
+export async function restoreRecordFromBackup(
+  backup: BackupEntry,
+): Promise<{ success: boolean; message: string }> {
+  if (!supabase) return { success: false, message: "Supabase is not configured." };
+
+  try {
+    const d = backup.data;
+    const now = new Date().toISOString();
+
+    if (backup.type === "teachers") {
+      const id = String(d.id || backup.record_id || "");
+      const name = String(d.name || "");
+      if (!id || !name) return { success: false, message: "Missing teacher id or name in backup." };
+
+      const { error } = await supabase.from(TEACHERS_TABLE).upsert(
+        { id, name, updated_at: now },
+        { onConflict: "id" },
+      );
+      if (error) throw error;
+      return { success: true, message: `Restored teacher "${name}" (${id})` };
+    }
+
+    if (backup.type === "modules") {
+      const id = typeof d.id === "number" ? d.id : parseInt(String(d.id || backup.record_id), 10);
+      if (isNaN(id)) return { success: false, message: "Missing valid module id in backup." };
+
+      const { error } = await supabase.from(MODULES_TABLE).upsert(
+        {
+          id,
+          module_number: String(d.module_number ?? ""),
+          module_subnumber: String(d.module_subnumber ?? ""),
+          module_name: String(d.module_name ?? ""),
+          updated_at: now,
+        },
+        { onConflict: "id" },
+      );
+      if (error) throw error;
+      return {
+        success: true,
+        message: `Restored module #${id} (M-${d.module_number}.${d.module_subnumber})`,
+      };
+    }
+
+    if (backup.type === "batches") {
+      const id = typeof d.id === "number" ? d.id : parseInt(String(d.id || backup.record_id), 10);
+      if (isNaN(id)) return { success: false, message: "Missing valid batch id in backup." };
+
+      const { error } = await supabase.from(BATCHES_TABLE).upsert(
+        {
+          id,
+          name: String(d.name ?? ""),
+          number_of_students:
+            typeof d.number_of_students === "number" ? d.number_of_students : 40,
+          updated_at: now,
+        },
+        { onConflict: "id" },
+      );
+      if (error) throw error;
+      return { success: true, message: `Restored batch #${id}` };
+    }
+
+    if (backup.type === "schedules") {
+      const payload = d.data || d;
+      const { error } = await supabase.from(SCHEDULE_TABLE).upsert(
+        {
+          id: SCHEDULE_ROW_ID,
+          data: payload,
+          updated_at: now,
+        },
+        { onConflict: "id" },
+      );
+      if (error) throw error;
+      return { success: true, message: "Restored full schedule snapshot" };
+    }
+
+    return { success: false, message: `Unknown backup type "${backup.type}"` };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("Failed to restore backup:", err);
+    return { success: false, message: `Restore failed: ${msg}` };
+  }
+}
+
