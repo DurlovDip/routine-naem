@@ -28,7 +28,7 @@ import { normalizeUsername, syntheticEmail, usernameError } from "./lib/roles";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 
 export const isAuthMock = import.meta.env.VITE_AUTH_MOCK === "true";
-export const authRequired = isAuthMock || isSupabaseConfigured;
+export const authRequired = isAuthMock || import.meta.env.VITE_AUTH_REQUIRED === "true";
 
 type AuthValue = {
   required: boolean;

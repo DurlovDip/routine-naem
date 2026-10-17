@@ -45,8 +45,8 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const cloudOn = isSupabaseConfigured && !isAuthMock;
   const canWrite =
-    cloudOn && auth.ready && (!auth.required || auth.session?.role === "super_admin" || auth.session?.role === "coordinator");
-  const canRead = cloudOn && auth.ready && (!auth.required || Boolean(auth.session));
+    cloudOn && (!auth.required || auth.session?.role === "super_admin" || auth.session?.role === "coordinator");
+  const canRead = cloudOn;
   const [state, dispatch] = useReducer(scheduleReducer, undefined, initialState);
   const [persistError, setPersistError] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(() =>

@@ -18,11 +18,15 @@ function repairBatch(value: unknown): Batch | null {
   const batch = value as Partial<Batch>;
   if (typeof batch.id !== "string") return null;
   const count = typeof batch.numberOfStudents === "number" ? batch.numberOfStudents : 40;
+  const roster =
+    Array.isArray(batch.roster) && batch.roster.length === count
+      ? batch.roster
+      : rosterRange(1, count);
   return {
     id: batch.id,
     name: typeof batch.name === "string" ? batch.name : "",
     numberOfStudents: count,
-    roster: Array.isArray(batch.roster) && batch.roster.length > 0 ? batch.roster : rosterRange(1, count),
+    roster,
   };
 }
 

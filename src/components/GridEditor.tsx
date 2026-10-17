@@ -460,7 +460,7 @@ function InlineBatchCell({ batch, onDelete }: { batch: Batch; onDelete: () => vo
 }
 
 function managerChoices(roster: string[], current: string, selected: string[]): string[] {
-  const options = roster.length > 0 ? roster : rosterRange(1, 30);
+  const options = roster.length > 0 ? roster : rosterRange(1, 40);
   const taken = new Set(selected.filter((id) => id && id !== current));
   const available = options.filter((id) => !taken.has(id));
   if (current && !available.includes(current)) available.unshift(current);

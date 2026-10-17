@@ -17,14 +17,14 @@ function put(
 }
 
 export function createDemoState(): AppState {
-  const roster = rosterRange(1, 30);
+  const roster = rosterRange(1, 40);
   const managers = ["09", "10"];
   const batches = [
-    { id: "batch-9", name: "9th Batch", roster: [...roster] },
-    { id: "batch-10", name: "10th Batch", roster: [...roster] },
-    { id: "batch-11", name: "11th Batch", roster: [...roster] },
-    { id: "batch-12", name: "12th Batch", roster: [...roster] },
-    { id: "batch-13", name: "13th Batch", roster: [...roster] },
+    { id: "batch-9", name: "9th Batch", numberOfStudents: 40, roster: [...roster] },
+    { id: "batch-10", name: "10th Batch", numberOfStudents: 40, roster: [...roster] },
+    { id: "batch-11", name: "11th Batch", numberOfStudents: 40, roster: [...roster] },
+    { id: "batch-12", name: "12th Batch", numberOfStudents: 40, roster: [...roster] },
+    { id: "batch-13", name: "13th Batch", numberOfStudents: 40, roster: [...roster] },
   ];
 
   const cells: DayPlan["cells"] = {};
