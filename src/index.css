@@ -710,6 +710,15 @@ button { cursor: pointer; }
 }
 .account-row strong { display: block; font-weight: 600; }
 .account-row .hint { display: block; margin: 0.15rem 0 0; }
+.role-row { align-items: flex-start; flex-wrap: wrap; }
+.role-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.5rem;
+}
+.role-form .field { min-width: 9.5rem; }
+.role-form .btn { min-height: 42px; }
 .delegation-form { display: grid; gap: 0.7rem; }
 .delegation-form .segmented { width: 100%; }
 .delegation-form .segmented button { flex: 1; min-height: 44px; }

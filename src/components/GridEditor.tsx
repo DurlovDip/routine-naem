@@ -4,12 +4,15 @@ import { buildTimeline, cellHasConflict, findConflicts, maxSpanFrom, rowCells, t
 import { cleanBatchNumber, formatModuleCode, orderedManagers, parseModuleCode, rosterRange, sessionSpanLabel } from "../lib/text";
 import { formatClock, formatRange } from "../lib/time";
 import type { Batch, CellContent, DayPlan } from "../lib/types";
+import { useAuth } from "../auth";
 import { useSchedule } from "../state";
 import { PlainSelect } from "./PlainSelect";
 import { Button, ConfirmDialog } from "./ui";
 
 export function GridEditor({ day }: { day: DayPlan }) {
   const { state, dispatch } = useSchedule();
+  const auth = useAuth();
+  const canManageCatalog = !auth.required || auth.session?.role === "super_admin";
   const [batchToDelete, setBatchToDelete] = useState<Batch | null>(null);
   const [slotToDelete, setSlotToDelete] = useState<{ id: string; name: string } | null>(null);
   const [mobileBatchId, setMobileBatchId] = useState(state.batches[0]?.id ?? "");
@@ -27,9 +30,11 @@ export function GridEditor({ day }: { day: DayPlan }) {
     <div>
       <div className="editor-tools">
         <div className="flex flex-wrap items-center gap-2">
-          <Button tone="primary" onClick={() => dispatch({ type: "add-batch" })} title="Add a new batch row">
-            <Plus size={15} /> Add Batch
-          </Button>
+          {canManageCatalog ? (
+            <Button tone="primary" onClick={() => dispatch({ type: "add-batch" })} title="Add a new batch row">
+              <Plus size={15} /> Add Batch
+            </Button>
+          ) : null}
           <Button
             tone="ghost"
             disabled={sessionCount >= 10}
@@ -112,7 +117,11 @@ export function GridEditor({ day }: { day: DayPlan }) {
                   {rows.map((row, rowIndex) => (
                     <tr key={row.batch.id}>
                       <th className="batch-read">
-                        <InlineBatchCell batch={row.batch} onDelete={() => setBatchToDelete(row.batch)} />
+                        <InlineBatchCell
+                          batch={row.batch}
+                          editable={canManageCatalog}
+                          onDelete={() => setBatchToDelete(row.batch)}
+                        />
                       </th>
                       <td className="recap-edit-cell">
                         <InlineManagerCell dayId={day.id} batch={row.batch} managers={row.managers} />
@@ -152,6 +161,7 @@ export function GridEditor({ day }: { day: DayPlan }) {
               onDeleteBatch={setBatchToDelete}
               onDeleteSlot={setSlotToDelete}
               sessionCount={sessionCount}
+              canManageCatalog={canManageCatalog}
             />
           ) : null}
         </div>
@@ -210,6 +220,7 @@ function MobileBatchList({
   onDeleteBatch,
   onDeleteSlot,
   sessionCount,
+  canManageCatalog,
 }: {
   day: DayPlan;
   timeline: Timeline;
@@ -220,6 +231,7 @@ function MobileBatchList({
   onDeleteBatch: (batch: Batch) => void;
   onDeleteSlot: (slot: { id: string; name: string }) => void;
   sessionCount: number;
+  canManageCatalog: boolean;
 }) {
   const row = rows.find((item) => item.batch.id === selectedId) ?? rows[0];
   if (!row) return null;
@@ -241,7 +253,7 @@ function MobileBatchList({
       </div>
       <article className="batch-session-card">
         <div className="mobile-batch-head">
-          <InlineBatchCell batch={row.batch} onDelete={() => onDeleteBatch(row.batch)} />
+          <InlineBatchCell batch={row.batch} editable={canManageCatalog} onDelete={() => onDeleteBatch(row.batch)} />
         </div>
         <div className="mobile-managers">
           <span className="mobile-kicker">Day managers</span>
@@ -420,7 +432,15 @@ function withCurrent(options: string[], current: string): string[] {
   return [current, ...options];
 }
 
-function InlineBatchCell({ batch, onDelete }: { batch: Batch; onDelete: () => void }) {
+function InlineBatchCell({
+  batch,
+  editable,
+  onDelete,
+}: {
+  batch: Batch;
+  editable: boolean;
+  onDelete: () => void;
+}) {
   const { dispatch } = useSchedule();
   const cleanNumber = cleanBatchNumber(batch.name, batch.id);
   const [draft, setDraft] = useState<string | null>(null);
@@ -430,6 +450,14 @@ function InlineBatchCell({ batch, onDelete }: { batch: Batch; onDelete: () => vo
     setDraft(null);
     if (!trimmed || trimmed === cleanNumber) return;
     dispatch({ type: "rename-batch", id: batch.id, name: trimmed });
+  }
+
+  if (!editable) {
+    return (
+      <div className="batch-header-cell">
+        <span className="batch-number-input">{cleanNumber}</span>
+      </div>
+    );
   }
 
   return (

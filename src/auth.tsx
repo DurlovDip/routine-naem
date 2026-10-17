@@ -8,23 +8,17 @@ import {
   type ReactNode,
 } from "react";
 import {
-  mockAssign,
-  mockCancel,
-  mockDelegate,
-  mockDelegations,
+  mockAssignRole,
   mockDirectory,
-  mockRevoke,
   mockSession,
   mockSignIn,
   mockSignOut,
   mockSignUp,
-  mockTransfer,
   mockUnclaimed,
-  type DelegationRow,
   type DirectoryRow,
   type SessionView,
 } from "./lib/mockAuth";
-import { normalizeUsername, syntheticEmail, usernameError } from "./lib/roles";
+import { normalizeUsername, syntheticEmail, usernameError, type StoredRole } from "./lib/roles";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 
 export const isAuthMock = import.meta.env.VITE_AUTH_MOCK === "true";
@@ -41,12 +35,12 @@ type AuthValue = {
   signOut: () => Promise<void>;
   unclaimedTeachers: () => Promise<{ id: string; name: string }[]>;
   directory: () => Promise<DirectoryRow[]>;
-  delegations: () => Promise<DelegationRow[]>;
-  assignCoordinator: (teacherId: string) => Promise<string | null>;
-  revokeCoordinator: (teacherId: string) => Promise<string | null>;
-  transferCoordination: (teacherId: string) => Promise<string | null>;
-  delegateCoordination: (teacherId: string, startsOn: string, endsOn: string) => Promise<string | null>;
-  cancelDelegation: (id: string) => Promise<string | null>;
+  assignRole: (
+    teacherId: string,
+    role: Exclude<StoredRole, "super_admin">,
+    roleStart: string | null,
+    roleEnd: string | null,
+  ) => Promise<string | null>;
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -64,14 +58,16 @@ async function readSupabaseSession(): Promise<SessionView | null> {
   if (error) throw new Error(error.message);
   const row = Array.isArray(rows) ? rows[0] : rows;
   if (!row) {
-    throw new Error("Signed in, but this account has no profile. Run supabase/migration_add_auth_roles.sql.");
+    throw new Error("Signed in, but this teacher has no account row. Run supabase/migration_add_auth_roles.sql.");
   }
   const record = row as {
     username: string;
     teacher_id: string;
     teacher_name: string;
-    base_role: SessionView["baseRole"];
+    stored_role: SessionView["storedRole"];
     effective: SessionView["role"];
+    role_start: string | null;
+    role_end: string | null;
   };
   return {
     userId: authSession.user.id,
@@ -79,8 +75,10 @@ async function readSupabaseSession(): Promise<SessionView | null> {
     email: authSession.user.email ?? syntheticEmail(record.username),
     teacherId: record.teacher_id,
     teacherName: record.teacher_name ?? record.teacher_id,
-    baseRole: record.base_role,
+    storedRole: record.stored_role,
     role: record.effective,
+    roleStart: record.role_start,
+    roleEnd: record.role_end,
   };
 }
 
@@ -113,24 +111,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isAuthMock || !supabase) return;
-    void refresh();
     const { data } = supabase.auth.onAuthStateChange(() => {
       void refresh();
     });
+    void refresh();
     return () => data.subscription.unsubscribe();
   }, [refresh]);
 
   const signIn = useCallback(async (username: string, password: string) => {
-    if (isAuthMock) {
-      const result = mockSignIn(username, password);
-      setSession(result.session);
-      return result.error;
-    }
-    if (!supabase) return "Supabase is not configured.";
-    const email = syntheticEmail(normalizeUsername(username));
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) return error.message;
+    const normalized = normalizeUsername(username);
+    const problem = usernameError(normalized);
+    if (problem) return problem;
     try {
+      if (isAuthMock) {
+        setSession(mockSignIn(normalized, password));
+        return null;
+      }
+      if (!supabase) return "Supabase is not configured.";
+      const { error } = await supabase.auth.signInWithPassword({
+        email: syntheticEmail(normalized),
+        password,
+      });
+      if (error) return error.message;
       setSession(await readSupabaseSession());
       return null;
     } catch (err) {
@@ -140,28 +142,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = useCallback(async (input: { username: string; teacherId: string; password: string }) => {
     const username = normalizeUsername(input.username);
-    const nameError = usernameError(username);
-    if (nameError) return nameError;
-    if (input.password.length < 8) return "Use a password of at least 8 characters.";
-    if (isAuthMock) {
-      const result = mockSignUp({ ...input, username });
-      setSession(result.session);
-      return result.error;
-    }
-    if (!supabase) return "Supabase is not configured.";
-    const { data: available, error: nameLookupError } = await supabase.rpc("username_available", { uname: username });
-    if (nameLookupError) return nameLookupError.message;
-    if (available === false) return "That username is already taken.";
-    const { data, error } = await supabase.auth.signUp({
-      email: syntheticEmail(username),
-      password: input.password,
-      options: { data: { username, teacher_id: input.teacherId } },
-    });
-    if (error) return error.message;
-    if (!data.session) {
-      return "Account created, but email confirmation is still on. In Supabase, open Authentication → Providers → Email, turn off Confirm email, then sign in.";
-    }
+    const problem = usernameError(username);
+    if (problem) return problem;
+    if (input.password.length < 6) return "Use at least 6 characters for the password.";
     try {
+      if (isAuthMock) {
+        setSession(mockSignUp({ ...input, username }));
+        return null;
+      }
+      if (!supabase) return "Supabase is not configured.";
+      const available = await supabase.rpc("username_available", { uname: username });
+      if (available.error) return available.error.message;
+      if (available.data === false) return "That username is already taken.";
+      const { error } = await supabase.auth.signUp({
+        email: syntheticEmail(username),
+        password: input.password,
+        options: { data: { username, teacher_id: input.teacherId } },
+      });
+      if (error) return error.message;
       setSession(await readSupabaseSession());
       return null;
     } catch (err) {
@@ -175,7 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(null);
       return;
     }
-    if (supabase) await supabase.auth.signOut();
+    await supabase?.auth.signOut();
     setSession(null);
   }, []);
 
@@ -192,149 +190,61 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!supabase) return [];
     const { data, error } = await supabase.rpc("access_directory");
     if (error) throw new Error(error.message);
-    return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
       teacherId: String(row.teacher_id),
-      teacherName: String(row.teacher_name ?? ""),
+      teacherName: String(row.teacher_name),
       username: row.username ? String(row.username) : null,
-      baseRole: (row.base_role as DirectoryRow["baseRole"]) ?? null,
-      role: (row.effective as DirectoryRow["role"]) ?? null,
-      hasPermanent: Boolean(row.has_permanent),
-      temporaryUntil: row.temporary_until ? String(row.temporary_until) : null,
+      storedRole: row.stored_role as DirectoryRow["storedRole"],
+      role: row.effective as DirectoryRow["role"],
+      roleStart: row.role_start ? String(row.role_start) : null,
+      roleEnd: row.role_end ? String(row.role_end) : null,
     }));
   }, []);
 
-  const delegations = useCallback(async () => {
-    if (isAuthMock) return mockDelegations();
-    if (!supabase) return [];
-    const { data, error } = await supabase.rpc("list_delegations");
-    if (error) throw new Error(error.message);
-    return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
-      id: String(row.id),
-      teacherId: String(row.teacher_id),
-      teacherName: String(row.teacher_name ?? ""),
-      grantedBy: row.granted_by ? String(row.granted_by) : null,
-      kind: row.kind === "permanent" ? "permanent" as const : "temporary" as const,
-      startsOn: row.starts_on ? String(row.starts_on) : null,
-      endsOn: row.ends_on ? String(row.ends_on) : null,
-      revokedAt: null,
-      active: Boolean(row.active),
-    }));
-  }, []);
-
-  const afterChange = useCallback(async (error: string | null) => {
-    if (!error) await refresh();
-    return error;
-  }, [refresh]);
-
-  const assignCoordinator = useCallback(async (teacherId: string) => {
-    if (isAuthMock) {
+  const assignRole = useCallback(
+    async (
+      teacherId: string,
+      role: Exclude<StoredRole, "super_admin">,
+      roleStart: string | null,
+      roleEnd: string | null,
+    ) => {
       try {
-        setSession(mockAssign(teacherId));
-        return null;
+        if (isAuthMock) {
+          mockAssignRole(teacherId, role, roleStart, roleEnd);
+          setSession(mockSession());
+          return null;
+        }
+        if (!supabase) return "Supabase is not configured.";
+        const { error } = await supabase.rpc("assign_teacher_role", {
+          target_teacher: teacherId,
+          next_role: role,
+          start_on: roleStart,
+          end_on: roleEnd,
+        });
+        if (!error) setSession(await readSupabaseSession());
+        return rpcError(error);
       } catch (err) {
         return err instanceof Error ? err.message : String(err);
       }
-    }
-    if (!supabase) return "Supabase is not configured.";
-    const { error } = await supabase.rpc("assign_coordinator", { target_teacher: teacherId });
-    return afterChange(rpcError(error));
-  }, [afterChange]);
-
-  const revokeCoordinator = useCallback(async (teacherId: string) => {
-    if (isAuthMock) {
-      try {
-        setSession(mockRevoke(teacherId));
-        return null;
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-    if (!supabase) return "Supabase is not configured.";
-    const { error } = await supabase.rpc("revoke_coordinator", { target_teacher: teacherId });
-    return afterChange(rpcError(error));
-  }, [afterChange]);
-
-  const transferCoordination = useCallback(async (teacherId: string) => {
-    if (isAuthMock) {
-      try {
-        setSession(mockTransfer(teacherId));
-        return null;
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-    if (!supabase) return "Supabase is not configured.";
-    const { error } = await supabase.rpc("transfer_coordination", { target_teacher: teacherId });
-    return afterChange(rpcError(error));
-  }, [afterChange]);
-
-  const delegateCoordination = useCallback(async (teacherId: string, startsOn: string, endsOn: string) => {
-    if (isAuthMock) {
-      try {
-        setSession(mockDelegate(teacherId, startsOn, endsOn));
-        return null;
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-    if (!supabase) return "Supabase is not configured.";
-    const { error } = await supabase.rpc("delegate_coordination", {
-      target_teacher: teacherId,
-      start_on: startsOn,
-      end_on: endsOn,
-    });
-    return afterChange(rpcError(error));
-  }, [afterChange]);
-
-  const cancelDelegation = useCallback(async (id: string) => {
-    if (isAuthMock) {
-      try {
-        setSession(mockCancel(id));
-        return null;
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-    if (!supabase) return "Supabase is not configured.";
-    const { error } = await supabase.rpc("cancel_delegation", { delegation_id: id });
-    return afterChange(rpcError(error));
-  }, [afterChange]);
+    },
+    [],
+  );
 
   const value = useMemo<AuthValue>(
     () => ({
       required: authRequired,
       mock: isAuthMock,
       ready,
-      session: notice ? null : session,
+      session,
       setupError: notice,
       signIn,
       signUp,
       signOut,
       unclaimedTeachers,
       directory,
-      delegations,
-      assignCoordinator,
-      revokeCoordinator,
-      transferCoordination,
-      delegateCoordination,
-      cancelDelegation,
+      assignRole,
     }),
-    [
-      ready,
-      session,
-      notice,
-      signIn,
-      signUp,
-      signOut,
-      unclaimedTeachers,
-      directory,
-      delegations,
-      assignCoordinator,
-      revokeCoordinator,
-      transferCoordination,
-      delegateCoordination,
-      cancelDelegation,
-    ],
+    [ready, session, notice, signIn, signUp, signOut, unclaimedTeachers, directory, assignRole],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -342,6 +252,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth(): AuthValue {
   const value = useContext(AuthContext);
-  if (!value) throw new Error("useAuth must be used within AuthProvider");
+  if (!value) throw new Error("useAuth must be used inside AuthProvider");
   return value;
 }

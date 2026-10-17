@@ -44,8 +44,11 @@ function initialState(): AppState {
 export function ScheduleProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const cloudOn = isSupabaseConfigured && !isAuthMock;
+  const role = auth.session?.role;
   const canWrite =
-    cloudOn && (!auth.required || auth.session?.role === "super_admin" || auth.session?.role === "coordinator");
+    cloudOn &&
+    (!auth.required || role === "super_admin" || role === "coordinator" || role === "temp_coordinator");
+  const canWriteCatalog = cloudOn && (!auth.required || role === "super_admin");
   const canRead = cloudOn;
   const [state, dispatch] = useReducer(scheduleReducer, undefined, initialState);
   const [persistError, setPersistError] = useState(false);
@@ -92,7 +95,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
 
     setSyncStatus("saving");
     const timer = window.setTimeout(async () => {
-      const ok = await upsertRemoteSchedule(state);
+      const ok = await upsertRemoteSchedule(state, { catalogs: canWriteCatalog });
       if (ok) {
         setSyncStatus("connected");
         setLastSyncedAt(new Date());
@@ -102,7 +105,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     }, 600);
 
     return () => window.clearTimeout(timer);
-  }, [state, canWrite]);
+  }, [state, canWrite, canWriteCatalog]);
 
   function applyRemote(next: AppState) {
     skipCloudSave.current = true;
@@ -150,7 +153,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
         setSyncStatus("connected");
         setLastSyncedAt(new Date());
       } else if (canWrite) {
-        const ok = await upsertRemoteSchedule(stateRef.current);
+        const ok = await upsertRemoteSchedule(stateRef.current, { catalogs: canWriteCatalog });
         if (mounted) {
           setSyncStatus(ok ? "connected" : "error");
           if (ok) setLastSyncedAt(new Date());
@@ -187,7 +190,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [canRead, canWrite]);
+  }, [canRead, canWrite, canWriteCatalog]);
 
   const store = useMemo<Store>(
     () => ({

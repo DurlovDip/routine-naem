@@ -1,16 +1,5 @@
-export type BaseRole = "super_admin" | "teacher";
-export type AppRole = "super_admin" | "coordinator" | "teacher";
-export type CoordinationKind = "permanent" | "temporary";
-
-export type Coordination = {
-  id: string;
-  teacherId: string;
-  grantedBy: string | null;
-  kind: CoordinationKind;
-  startsOn: string | null;
-  endsOn: string | null;
-  revokedAt: string | null;
-};
+export type StoredRole = "super_admin" | "coordinator" | "temp_coordinator" | "teacher";
+export type AppRole = StoredRole;
 
 export function todayIso(date = new Date()): string {
   const year = date.getFullYear();
@@ -34,27 +23,28 @@ export function usernameError(username: string): string | null {
   return null;
 }
 
-export function isCoordinationActive(row: Coordination, today: string): boolean {
-  if (row.revokedAt) return false;
-  if (row.kind === "permanent") return true;
-  if (!row.startsOn || !row.endsOn) return false;
-  return row.startsOn <= today && today <= row.endsOn;
-}
-
 export function effectiveRole(
-  baseRole: BaseRole,
-  teacherId: string | null,
-  rows: Coordination[],
+  role: StoredRole,
+  roleStart: string | null,
+  roleEnd: string | null,
   today: string,
 ): AppRole {
-  if (baseRole === "super_admin") return "super_admin";
-  if (!teacherId) return "teacher";
-  const active = rows.some((row) => row.teacherId === teacherId && isCoordinationActive(row, today));
-  return active ? "coordinator" : "teacher";
+  if (role === "super_admin") return "super_admin";
+  if (
+    (role === "coordinator" || role === "temp_coordinator") &&
+    roleStart &&
+    roleEnd &&
+    roleStart <= today &&
+    today <= roleEnd
+  ) {
+    return role;
+  }
+  return "teacher";
 }
 
 export function roleLabel(role: AppRole): string {
   if (role === "super_admin") return "Super admin";
   if (role === "coordinator") return "Coordinator";
+  if (role === "temp_coordinator") return "Temporary coordinator";
   return "Teacher";
 }

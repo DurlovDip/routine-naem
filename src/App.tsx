@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { CopyPlus, FileDown, LogOut, Menu, Printer, Trash2, X } from "lucide-react";
 import { AuthProvider, useAuth } from "./auth";
-import { DelegationSection, PeopleSection } from "./components/AccessPanels";
+import { PeopleSection } from "./components/AccessPanels";
 import { AuthScreen } from "./components/AuthScreen";
 import { BatchEditor, FooterEditor, HeaderEditor, LibraryEditor, StructureEditor } from "./components/panels";
 import { GridEditor } from "./components/GridEditor";
@@ -22,7 +22,9 @@ function readHash(): Mode {
 function Shell() {
   const { state, dispatch, day } = useSchedule();
   const auth = useAuth();
-  const canEdit = !auth.required || auth.session?.role === "super_admin" || auth.session?.role === "coordinator";
+  const role = auth.session?.role;
+  const canEdit = !auth.required || role === "super_admin" || role === "coordinator" || role === "temp_coordinator";
+  const canManageCatalog = !auth.required || role === "super_admin";
   const [mode, setMode] = useState<Mode>(() => readHash());
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -195,21 +197,20 @@ function Shell() {
               <GridEditor day={day} />
             </div>
             {auth.session?.role === "super_admin" ? (
-              <Section title="People" summary="Accounts and coordinators">
+              <Section title="Roles" summary="Assign a date range">
                 <PeopleSection />
               </Section>
             ) : null}
-            {auth.session && auth.session.role !== "teacher" ? (
-              <Section title="Hand off coordination" summary="Transfer or delegate">
-                <DelegationSection />
+            {canManageCatalog ? (
+              <Section title="Settings" summary="Teachers and modules">
+                <LibraryEditor />
               </Section>
             ) : null}
-            <Section title="Settings" summary="Teachers and modules">
-              <LibraryEditor />
-            </Section>
-            <Section title="Batches and day managers" summary={`${state.batches.length} rows`}>
-              <BatchEditor day={day} />
-            </Section>
+            {canManageCatalog ? (
+              <Section title="Batches and day managers" summary={`${state.batches.length} rows`}>
+                <BatchEditor day={day} />
+              </Section>
+            ) : null}
             <Section
               title="Times, sessions and breaks"
               summary={`${day.slots.filter((slot) => slot.kind === "session").length} sessions`}

@@ -256,10 +256,14 @@ async function syncBatches(batches: Batch[], timestamp: string) {
  * - Saves the full schedule JSON in schedules table
  * - Upserts relational records in teachers, modules, and batches tables
  */
-export async function upsertRemoteSchedule(state: AppState): Promise<boolean> {
+export async function upsertRemoteSchedule(
+  state: AppState,
+  options: { catalogs?: boolean } = {},
+): Promise<boolean> {
   if (!supabase) return false;
   try {
     const now = new Date().toISOString();
+    const catalogs = options.catalogs !== false;
 
     const schedulePromise = supabase.from(SCHEDULE_TABLE).upsert(
       {
@@ -272,9 +276,15 @@ export async function upsertRemoteSchedule(state: AppState): Promise<boolean> {
 
     const [scheduleRes] = await Promise.all([
       schedulePromise,
-      syncTeachers(state.teachers, now).catch((err) => console.warn("Sync teachers failed:", err)),
-      syncModules(state.modules, now).catch((err) => console.warn("Sync modules failed:", err)),
-      syncBatches(state.batches, now).catch((err) => console.warn("Sync batches failed:", err)),
+      catalogs
+        ? syncTeachers(state.teachers, now).catch((err) => console.warn("Sync teachers failed:", err))
+        : Promise.resolve(),
+      catalogs
+        ? syncModules(state.modules, now).catch((err) => console.warn("Sync modules failed:", err))
+        : Promise.resolve(),
+      catalogs
+        ? syncBatches(state.batches, now).catch((err) => console.warn("Sync batches failed:", err))
+        : Promise.resolve(),
     ]);
 
     if (scheduleRes.error) {

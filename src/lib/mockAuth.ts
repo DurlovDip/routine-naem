@@ -1,66 +1,29 @@
 import {
   effectiveRole,
-  isCoordinationActive,
   normalizeUsername,
   syntheticEmail,
   todayIso,
   usernameError,
   type AppRole,
-  type BaseRole,
-  type Coordination,
-  type CoordinationKind,
+  type StoredRole,
 } from "./roles";
 
-export type MockTeacher = { id: string; name: string };
+const STORAGE_KEY = "routine-naem-mock-auth";
 
-export const MOCK_TEACHERS: MockTeacher[] = [
-  { id: "teacher-1", name: "Prof. Asisul" },
-  { id: "teacher-2", name: "Md. Sazzad Ali" },
-  { id: "teacher-3", name: "Muhammad Yeakub Ali" },
-  { id: "teacher-4", name: "Mst. Arifa Tazrimin" },
-  { id: "teacher-5", name: "Md. Jahangir Alom" },
-  { id: "teacher-6", name: "Prof. Rukhshana" },
-  { id: "teacher-7", name: "Prof. Nilufar" },
-  { id: "teacher-8", name: "Ms. Ayesa" },
-  { id: "teacher-9", name: "Mr. S. Mahbub" },
-  { id: "teacher-10", name: "Dr. Rahman" },
-  { id: "teacher-11", name: "Mr. M. Ali" },
-  { id: "teacher-12", name: "Mr. Ariful" },
-  { id: "teacher-13", name: "Dr. Nuruzzaman" },
-  { id: "teacher-14", name: "Ms. Zinan" },
-  { id: "teacher-15", name: "Ms. Arifa" },
-  { id: "teacher-16", name: "Dr. Ayet" },
-];
-
-export type MockUser = {
+type MockTeacher = {
   id: string;
-  username: string;
-  password: string;
-  teacherId: string;
-  baseRole: BaseRole;
+  name: string;
+  authUserId: string | null;
+  username: string | null;
+  password: string | null;
+  role: StoredRole;
+  roleStart: string | null;
+  roleEnd: string | null;
 };
 
 type MockDb = {
-  users: MockUser[];
-  coordinations: Coordination[];
+  teachers: MockTeacher[];
   sessionUserId: string | null;
-};
-
-const KEY = "routine-auth-mock-v1";
-
-export type DirectoryRow = {
-  teacherId: string;
-  teacherName: string;
-  username: string | null;
-  baseRole: BaseRole | null;
-  role: AppRole | null;
-  hasPermanent: boolean;
-  temporaryUntil: string | null;
-};
-
-export type DelegationRow = Coordination & {
-  teacherName: string;
-  active: boolean;
 };
 
 export type SessionView = {
@@ -69,112 +32,92 @@ export type SessionView = {
   email: string;
   teacherId: string;
   teacherName: string;
-  baseRole: BaseRole;
   role: AppRole;
+  storedRole: StoredRole;
+  roleStart: string | null;
+  roleEnd: string | null;
 };
 
+export type DirectoryRow = {
+  teacherId: string;
+  teacherName: string;
+  username: string | null;
+  storedRole: StoredRole;
+  role: AppRole;
+  roleStart: string | null;
+  roleEnd: string | null;
+};
+
+const previewTeachers = [
+  "Prof. Asisul",
+  "Md. Sazzad Ali",
+  "Muhammad Yeakub Ali",
+  "Mst. Arifa Tazrimin",
+  "Md. Jahangir Alom",
+  "Prof. Rukhshana",
+];
+
+function seedTeachers(): MockTeacher[] {
+  return previewTeachers.map((name, index) => ({
+    id: `teacher-${index + 1}`,
+    name,
+    authUserId: null,
+    username: null,
+    password: null,
+    role: "teacher" as const,
+    roleStart: null,
+    roleEnd: null,
+  }));
+}
+
 function emptyDb(): MockDb {
-  return { users: [], coordinations: [], sessionUserId: null };
+  return { teachers: seedTeachers(), sessionUserId: null };
 }
 
 function readDb(): MockDb {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return emptyDb();
-    const parsed = JSON.parse(raw) as MockDb;
-    return {
-      users: Array.isArray(parsed.users) ? parsed.users : [],
-      coordinations: Array.isArray(parsed.coordinations) ? parsed.coordinations : [],
-      sessionUserId: typeof parsed.sessionUserId === "string" ? parsed.sessionUserId : null,
-    };
+    const parsed = JSON.parse(raw) as Partial<MockDb>;
+    const teachers = Array.isArray(parsed.teachers) ? parsed.teachers : seedTeachers();
+    return { teachers, sessionUserId: parsed.sessionUserId ?? null };
   } catch {
     return emptyDb();
   }
 }
 
 function writeDb(db: MockDb) {
-  localStorage.setItem(KEY, JSON.stringify(db));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
 }
 
-function teacherName(id: string): string {
-  return MOCK_TEACHERS.find((teacher) => teacher.id === id)?.name ?? id;
-}
-
-function viewFor(db: MockDb, user: MockUser, today = todayIso()): SessionView {
+function toSession(teacher: MockTeacher): SessionView {
+  const today = todayIso();
   return {
-    userId: user.id,
-    username: user.username,
-    email: syntheticEmail(user.username),
-    teacherId: user.teacherId,
-    teacherName: teacherName(user.teacherId),
-    baseRole: user.baseRole,
-    role: effectiveRole(user.baseRole, user.teacherId, db.coordinations, today),
+    userId: teacher.authUserId ?? "",
+    username: teacher.username ?? "",
+    email: syntheticEmail(teacher.username ?? ""),
+    teacherId: teacher.id,
+    teacherName: teacher.name,
+    storedRole: teacher.role,
+    role: effectiveRole(teacher.role, teacher.roleStart, teacher.roleEnd, today),
+    roleStart: teacher.roleStart,
+    roleEnd: teacher.roleEnd,
   };
 }
 
-function currentUser(db: MockDb): MockUser | null {
-  return db.users.find((user) => user.id === db.sessionUserId) ?? null;
+function requireSuperAdmin(db: MockDb): MockTeacher {
+  const session = current(db);
+  if (!session || session.role !== "super_admin") throw new Error("Only a super admin can change roles.");
+  return db.teachers.find((teacher) => teacher.authUserId === session.userId)!;
 }
 
-function requireEditor(db: MockDb): SessionView {
-  const user = currentUser(db);
-  if (!user) throw new Error("Sign in first.");
-  const session = viewFor(db, user);
-  if (session.role === "teacher") throw new Error("Teachers can’t change coordination.");
-  return session;
+function current(db: MockDb): SessionView | null {
+  const teacher = db.teachers.find((row) => row.authUserId && row.authUserId === db.sessionUserId);
+  return teacher ? toSession(teacher) : null;
 }
 
 export function mockSession(): SessionView | null {
-  const db = readDb();
-  const user = currentUser(db);
-  return user ? viewFor(db, user) : null;
-}
-
-export function mockUnclaimed(): MockTeacher[] {
-  const taken = new Set(readDb().users.map((user) => user.teacherId));
-  return MOCK_TEACHERS.filter((teacher) => !taken.has(teacher.id));
-}
-
-export function mockSignUp(input: {
-  username: string;
-  teacherId: string;
-  password: string;
-}): { session: SessionView | null; error: string | null } {
-  const username = normalizeUsername(input.username);
-  const nameError = usernameError(username);
-  if (nameError) return { session: null, error: nameError };
-  if (input.password.length < 8) return { session: null, error: "Use a password of at least 8 characters." };
-  const db = readDb();
-  if (db.users.some((user) => user.username === username)) {
-    return { session: null, error: "That username is already taken." };
-  }
-  if (!MOCK_TEACHERS.some((teacher) => teacher.id === input.teacherId)) {
-    return { session: null, error: "Choose your name from the teacher list." };
-  }
-  if (db.users.some((user) => user.teacherId === input.teacherId)) {
-    return { session: null, error: "That teacher already has an account." };
-  }
-  const user: MockUser = {
-    id: `user-${db.users.length + 1}`,
-    username,
-    password: input.password,
-    teacherId: input.teacherId,
-    baseRole: db.users.length === 0 ? "super_admin" : "teacher",
-  };
-  db.users.push(user);
-  db.sessionUserId = user.id;
-  writeDb(db);
-  return { session: viewFor(db, user), error: null };
-}
-
-export function mockSignIn(usernameRaw: string, password: string): { session: SessionView | null; error: string | null } {
-  const username = normalizeUsername(usernameRaw);
-  const db = readDb();
-  const user = db.users.find((item) => item.username === username && item.password === password);
-  if (!user) return { session: null, error: "Unknown username or password." };
-  db.sessionUserId = user.id;
-  writeDb(db);
-  return { session: viewFor(db, user), error: null };
+  return current(readDb());
 }
 
 export function mockSignOut() {
@@ -183,131 +126,82 @@ export function mockSignOut() {
   writeDb(db);
 }
 
+export function mockUnclaimed(): { id: string; name: string }[] {
+  return readDb()
+    .teachers.filter((teacher) => !teacher.authUserId)
+    .map((teacher) => ({ id: teacher.id, name: teacher.name }));
+}
+
+export function mockSignUp(input: { username: string; teacherId: string; password: string }): SessionView {
+  const username = normalizeUsername(input.username);
+  const problem = usernameError(username);
+  if (problem) throw new Error(problem);
+  if (input.password.length < 6) throw new Error("Use at least 6 characters for the password.");
+  const db = readDb();
+  if (db.teachers.some((teacher) => teacher.username === username)) throw new Error("That username is already taken.");
+  const teacher = db.teachers.find((row) => row.id === input.teacherId);
+  if (!teacher) throw new Error("Pick a teacher from the list.");
+  if (teacher.authUserId) throw new Error("That teacher already has an account.");
+  const first = !db.teachers.some((row) => row.authUserId);
+  teacher.authUserId = `user-${username}`;
+  teacher.username = username;
+  teacher.password = input.password;
+  if (first) {
+    teacher.role = "super_admin";
+    teacher.roleStart = null;
+    teacher.roleEnd = null;
+  }
+  db.sessionUserId = teacher.authUserId;
+  writeDb(db);
+  return toSession(teacher);
+}
+
+export function mockSignIn(username: string, password: string): SessionView {
+  const db = readDb();
+  const teacher = db.teachers.find((row) => row.username === normalizeUsername(username));
+  if (!teacher || teacher.password !== password) throw new Error("Username or password is incorrect.");
+  db.sessionUserId = teacher.authUserId;
+  writeDb(db);
+  return toSession(teacher);
+}
+
 export function mockDirectory(): DirectoryRow[] {
   const db = readDb();
-  requireEditor(db);
+  requireSuperAdmin(db);
   const today = todayIso();
-  return MOCK_TEACHERS.map((teacher) => {
-    const user = db.users.find((item) => item.teacherId === teacher.id) ?? null;
-    const rows = db.coordinations.filter((row) => row.teacherId === teacher.id);
-    const permanent = rows.some((row) => isCoordinationActive(row, today) && row.kind === "permanent");
-    const temporary = rows
-      .filter((row) => isCoordinationActive(row, today) && row.kind === "temporary" && row.endsOn)
-      .map((row) => row.endsOn as string)
-      .sort()
-      .at(-1) ?? null;
-    return {
-      teacherId: teacher.id,
-      teacherName: teacher.name,
-      username: user?.username ?? null,
-      baseRole: user?.baseRole ?? null,
-      role: user ? effectiveRole(user.baseRole, user.teacherId, db.coordinations, today) : null,
-      hasPermanent: permanent,
-      temporaryUntil: temporary,
-    };
-  });
+  return db.teachers.map((teacher) => ({
+    teacherId: teacher.id,
+    teacherName: teacher.name,
+    username: teacher.username,
+    storedRole: teacher.role,
+    role: effectiveRole(teacher.role, teacher.roleStart, teacher.roleEnd, today),
+    roleStart: teacher.roleStart,
+    roleEnd: teacher.roleEnd,
+  }));
 }
 
-export function mockDelegations(): DelegationRow[] {
+export function mockAssignRole(
+  teacherId: string,
+  role: Exclude<StoredRole, "super_admin">,
+  roleStart: string | null,
+  roleEnd: string | null,
+) {
   const db = readDb();
-  requireEditor(db);
-  const today = todayIso();
-  return db.coordinations
-    .filter((row) => !row.revokedAt)
-    .map((row) => ({
-      ...row,
-      teacherName: teacherName(row.teacherId),
-      active: isCoordinationActive(row, today),
-    }));
-}
-
-function addCoordination(teacherId: string, kind: CoordinationKind, startsOn: string | null, endsOn: string | null) {
-  const db = readDb();
-  const session = requireEditor(db);
-  if (teacherId === session.teacherId && kind === "temporary") {
-    throw new Error("Choose another teacher.");
-  }
-  if (!MOCK_TEACHERS.some((teacher) => teacher.id === teacherId)) throw new Error("Unknown teacher.");
-  const row: Coordination = {
-    id: `coord-${db.coordinations.length + 1}`,
-    teacherId,
-    grantedBy: session.userId,
-    kind,
-    startsOn,
-    endsOn,
-    revokedAt: null,
-  };
-  db.coordinations.push(row);
-  writeDb(db);
-}
-
-export function mockAssign(teacherId: string): SessionView | null {
-  const db = readDb();
-  const session = requireEditor(db);
-  if (session.role !== "super_admin") throw new Error("Only a super admin can assign coordinators.");
-  const today = todayIso();
-  const exists = db.coordinations.some(
-    (row) => row.teacherId === teacherId && row.kind === "permanent" && isCoordinationActive(row, today),
-  );
-  if (!exists) addCoordination(teacherId, "permanent", null, null);
-  return mockSession();
-}
-
-export function mockRevoke(teacherId: string): SessionView | null {
-  const db = readDb();
-  const session = requireEditor(db);
-  if (session.role !== "super_admin") throw new Error("Only a super admin can end coordination.");
-  for (const row of db.coordinations) {
-    if (row.teacherId === teacherId && !row.revokedAt) row.revokedAt = new Date().toISOString();
-  }
-  writeDb(db);
-  return mockSession();
-}
-
-export function mockTransfer(teacherId: string): SessionView | null {
-  const db = readDb();
-  const session = requireEditor(db);
-  if (teacherId === session.teacherId) throw new Error("Choose another teacher.");
-  if (!MOCK_TEACHERS.some((teacher) => teacher.id === teacherId)) throw new Error("Unknown teacher.");
-  for (const row of db.coordinations) {
-    if (row.teacherId === session.teacherId && row.kind === "permanent" && !row.revokedAt) {
-      row.revokedAt = new Date().toISOString();
+  requireSuperAdmin(db);
+  const teacher = db.teachers.find((row) => row.id === teacherId);
+  if (!teacher) throw new Error("That teacher is not in the list.");
+  if (teacher.role === "super_admin") throw new Error("Change a super admin with promote_super_admin.sql.");
+  if (role === "teacher") {
+    teacher.role = "teacher";
+    teacher.roleStart = null;
+    teacher.roleEnd = null;
+  } else {
+    if (!roleStart || !roleEnd || roleEnd < roleStart) {
+      throw new Error("A coordinator needs a start date and an end date.");
     }
-  }
-  const today = todayIso();
-  const exists = db.coordinations.some(
-    (row) => row.teacherId === teacherId && row.kind === "permanent" && isCoordinationActive(row, today),
-  );
-  if (!exists) {
-    db.coordinations.push({
-      id: `coord-${db.coordinations.length + 1}`,
-      teacherId,
-      grantedBy: session.userId,
-      kind: "permanent",
-      startsOn: null,
-      endsOn: null,
-      revokedAt: null,
-    });
+    teacher.role = role;
+    teacher.roleStart = roleStart;
+    teacher.roleEnd = roleEnd;
   }
   writeDb(db);
-  return mockSession();
-}
-
-export function mockDelegate(teacherId: string, startsOn: string, endsOn: string): SessionView | null {
-  if (!startsOn || !endsOn || endsOn < startsOn) throw new Error("Choose a start and end date.");
-  addCoordination(teacherId, "temporary", startsOn, endsOn);
-  return mockSession();
-}
-
-export function mockCancel(id: string): SessionView | null {
-  const db = readDb();
-  const session = requireEditor(db);
-  const row = db.coordinations.find((item) => item.id === id && !item.revokedAt);
-  if (!row) throw new Error("That delegation is already closed.");
-  if (session.role !== "super_admin" && row.grantedBy !== session.userId) {
-    throw new Error("You can only cancel a delegation you created.");
-  }
-  row.revokedAt = new Date().toISOString();
-  writeDb(db);
-  return mockSession();
 }
