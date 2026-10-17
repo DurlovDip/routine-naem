@@ -7,25 +7,17 @@ import { Button, ConfirmDialog, Section } from "./components/ui";
 import { downloadScheduleDocx } from "./lib/docx";
 import { joinWithAnd, rotateIds } from "./lib/text";
 import { formatDayNumber, formatSlashDate, weekdayName } from "./lib/time";
-import type { CellSelection } from "./lib/types";
 import { ScheduleProvider, useSchedule } from "./state";
 
 type Mode = "edit" | "preview";
 
-function readHash(): { mode: Mode; cell: CellSelection | null } {
-  const hash = window.location.hash.replace(/^#/, "");
-  const mode: Mode = hash.startsWith("preview") ? "preview" : "edit";
-  const match = hash.match(/cell=([^&]+)/);
-  if (!match?.[1]) return { mode, cell: null };
-  const [batchId, sessionId] = decodeURIComponent(match[1]).split(":");
-  if (!batchId || !sessionId) return { mode, cell: null };
-  return { mode, cell: { batchId, sessionId } };
+function readHash(): Mode {
+  return window.location.hash.replace(/^#/, "").startsWith("preview") ? "preview" : "edit";
 }
 
 function Shell() {
   const { state, dispatch, day } = useSchedule();
-  const [mode, setMode] = useState<Mode>(() => readHash().mode);
-  const [selection, setSelection] = useState<CellSelection | null>(() => readHash().cell);
+  const [mode, setMode] = useState<Mode>(() => readHash());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const showEditor = mode !== "preview";
@@ -146,7 +138,7 @@ function Shell() {
               </p>
             </div>
             <div className="px-4 py-4">
-              <GridEditor day={day} selection={selection} onSelect={setSelection} />
+              <GridEditor day={day} />
             </div>
             <Section title="Settings" summary="Teachers and modules">
               <LibraryEditor />
@@ -186,7 +178,6 @@ function Shell() {
           onCancel={() => setConfirmDelete(false)}
           onConfirm={() => {
             dispatch({ type: "delete-day", dayId: day.id });
-            setSelection(null);
             setConfirmDelete(false);
           }}
         />
