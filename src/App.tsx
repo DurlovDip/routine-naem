@@ -7,6 +7,7 @@ import { Button, ConfirmDialog, Section } from "./components/ui";
 import { downloadScheduleDocx } from "./lib/docx";
 import { joinWithAnd, rotateIds } from "./lib/text";
 import { formatDayNumber, formatSlashDate, weekdayName } from "./lib/time";
+import { SyncStatusButton } from "./components/SyncStatus";
 import { ScheduleProvider, useSchedule } from "./state";
 
 type Mode = "edit" | "preview";
@@ -63,6 +64,7 @@ function Shell() {
             ))}
           </div>
           <div className="toolbar-actions">
+            <SyncStatusButton />
             <Button
               tone="primary"
               onClick={() => {
