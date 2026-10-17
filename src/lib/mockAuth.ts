@@ -16,6 +16,7 @@ type MockTeacher = {
   authUserId: string | null;
   username: string | null;
   password: string | null;
+  designation: string;
   role: StoredRole;
   roleStart: string | null;
   roleEnd: string | null;
@@ -76,6 +77,7 @@ function seedTeachers(): MockTeacher[] {
     authUserId: null,
     username: null,
     password: null,
+    designation: "",
     role: "teacher" as const,
     roleStart: null,
     roleEnd: null,
@@ -201,12 +203,30 @@ export function mockDirectory(): DirectoryRow[] {
   return db.teachers.map((teacher) => ({
     teacherId: teacher.id,
     teacherName: teacher.name,
+    designation: teacher.designation ?? "",
     username: teacher.username,
     storedRole: teacher.role,
     role: effectiveRole(teacher.role, teacher.roleStart, teacher.roleEnd, today),
     roleStart: teacher.roleStart,
     roleEnd: teacher.roleEnd,
   }));
+}
+
+export function mockUpdateTeacher(
+  teacherId: string,
+  patch: { name?: string; designation?: string },
+) {
+  const db = readDb();
+  requireSuperAdmin(db);
+  const teacher = db.teachers.find((row) => row.id === teacherId);
+  if (!teacher) throw new Error("That teacher is not in the list.");
+  if (patch.name !== undefined) {
+    const name = patch.name.trim();
+    if (!name) throw new Error("A teacher needs a name.");
+    teacher.name = name;
+  }
+  if (patch.designation !== undefined) teacher.designation = patch.designation.trim();
+  writeDb(db);
 }
 
 export function mockAssignRole(

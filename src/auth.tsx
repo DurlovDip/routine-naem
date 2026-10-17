@@ -11,6 +11,7 @@ import {
   mockAssignRole,
   mockDirectory,
   mockSession,
+  mockUpdateTeacher,
   mockSignIn,
   mockSignOut,
   mockSignUp,
@@ -35,6 +36,10 @@ type AuthValue = {
   signOut: () => Promise<void>;
   unclaimedTeachers: () => Promise<{ id: string; name: string }[]>;
   directory: () => Promise<DirectoryRow[]>;
+  updateTeacher: (
+    teacherId: string,
+    patch: { name?: string; designation?: string },
+  ) => Promise<string | null>;
   assignRole: (
     teacherId: string,
     role: Exclude<StoredRole, "super_admin">,
@@ -47,6 +52,24 @@ const AuthContext = createContext<AuthValue | null>(null);
 
 function rpcError(error: { message: string } | null): string | null {
   return error ? error.message : null;
+}
+
+async function mergeTeacherDetails(rows: DirectoryRow[]): Promise<DirectoryRow[]> {
+  if (!supabase || rows.length === 0) return rows;
+  const { data, error } = await supabase.from("teachers").select("id, name, designation");
+  if (error || !data) return rows;
+  const byId = new Map(
+    (data as Array<{ id: string; name: string; designation?: string | null }>).map((teacher) => [teacher.id, teacher]),
+  );
+  return rows.map((row) => {
+    const teacher = byId.get(row.teacherId);
+    if (!teacher) return row;
+    return {
+      ...row,
+      teacherName: teacher.name || row.teacherName,
+      designation: teacher.designation ?? row.designation ?? "",
+    };
+  });
 }
 
 async function readSupabaseSession(): Promise<SessionView | null> {
@@ -250,21 +273,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase.rpc("access_directory");
       if (error) throw new Error(error.message);
-      return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+      const rows = ((data ?? []) as Record<string, unknown>[]).map((row) => ({
         teacherId: String(row.teacher_id),
         teacherName: String(row.teacher_name),
+        designation: row.designation != null ? String(row.designation) : "",
         username: row.username ? String(row.username) : null,
         storedRole: row.stored_role as DirectoryRow["storedRole"],
         role: row.effective as DirectoryRow["role"],
         roleStart: row.role_start ? String(row.role_start) : null,
         roleEnd: row.role_end ? String(row.role_end) : null,
       }));
+      return mergeTeacherDetails(rows);
     } catch {
-      const { data: teachers } = await supabase.from("teachers").select("id, name");
+      const { data: teachers } = await supabase.from("teachers").select("id, name, designation");
       if (teachers) {
-        return (teachers as Array<{ id: string; name: string }>).map((t) => ({
+        return (teachers as Array<{ id: string; name: string; designation?: string | null }>).map((t) => ({
           teacherId: t.id,
           teacherName: t.name,
+          designation: t.designation ?? "",
           username: null,
           storedRole: "teacher" as const,
           role: "teacher" as const,
@@ -275,6 +301,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return [];
     }
   }, []);
+
+  const updateTeacher = useCallback(
+    async (teacherId: string, patch: { name?: string; designation?: string }) => {
+      if (session?.role !== "super_admin") return "Only a super admin can edit teachers.";
+      const next: { name?: string; designation?: string } = {};
+      if (patch.name !== undefined) {
+        const name = patch.name.trim();
+        if (!name) return "A teacher needs a name.";
+        next.name = name;
+      }
+      if (patch.designation !== undefined) next.designation = patch.designation.trim();
+      if (next.name === undefined && next.designation === undefined) return null;
+      try {
+        if (isAuthMock) {
+          mockUpdateTeacher(teacherId, next);
+          return null;
+        }
+        if (!supabase) return "Supabase is not configured.";
+        const { error } = await supabase
+          .from("teachers")
+          .update({ ...next, updated_at: new Date().toISOString() })
+          .eq("id", teacherId);
+        return rpcError(error);
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+    [session?.role],
+  );
 
   const assignRole = useCallback(
     async (
@@ -317,9 +372,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOut,
       unclaimedTeachers,
       directory,
+      updateTeacher,
       assignRole,
     }),
-    [ready, session, notice, signIn, signUp, signOut, unclaimedTeachers, directory, assignRole],
+    [ready, session, notice, signIn, signUp, signOut, unclaimedTeachers, directory, updateTeacher, assignRole],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

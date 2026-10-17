@@ -262,6 +262,7 @@ create or replace function public.access_directory()
 returns table (
   teacher_id text,
   teacher_name text,
+  designation text,
   username text,
   stored_role text,
   effective text,
@@ -281,6 +282,7 @@ begin
     select
       teachers.id,
       teachers.name,
+      teachers.designation,
       teachers.username,
       teachers.role,
       case
