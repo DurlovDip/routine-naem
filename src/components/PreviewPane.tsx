@@ -38,7 +38,7 @@ export function PreviewPane({
 
   return (
     <div id="preview-scroll" className="preview-pane">
-      <p className="no-print mx-auto mb-3 max-w-[285mm] text-center text-xs text-stone-600">
+      <p className="preview-note no-print">
         A4 landscape preview. Print / PDF uses this page. Choose landscape if the dialog does not.
         {conflicts.length > 0
           ? ` ${conflicts.length} teacher clash${conflicts.length === 1 ? "" : "es"} on this day — they stay off the printed sheet.`

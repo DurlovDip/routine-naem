@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { CopyPlus, FileDown, Printer, Trash2 } from "lucide-react";
+import { CopyPlus, FileDown, Menu, Printer, Trash2, X } from "lucide-react";
 import { BatchEditor, FooterEditor, HeaderEditor, LibraryEditor, StructureEditor } from "./components/panels";
 import { GridEditor } from "./components/GridEditor";
 import { PreviewPane } from "./components/PreviewPane";
@@ -18,6 +18,7 @@ function readHash(): Mode {
 function Shell() {
   const { state, dispatch, day } = useSchedule();
   const [mode, setMode] = useState<Mode>(() => readHash());
+  const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const showEditor = mode !== "preview";
@@ -32,24 +33,54 @@ function Shell() {
   return (
     <div className="app">
       <header className="toolbar no-print">
-        <div>
+        <div className="brand">
           <div className="brand-title">Daily Schedule</div>
           <div className="brand-sub">Class routine for the training course</div>
         </div>
-        <div className="segmented" role="group" aria-label="View">
-          {(["edit", "preview"] as const).map((item) => (
-            <button key={item} type="button" aria-pressed={mode === item} onClick={() => setMode(item)}>
-              {item === "edit" ? "Editor" : "Preview"}
-            </button>
-          ))}
-        </div>
-        <div className="toolbar-actions">
-          <Button tone="primary" onClick={() => window.print()}>
-            <Printer size={16} /> Print / PDF
-          </Button>
-          <Button onClick={() => void downloadScheduleDocx(state, day)}>
-            <FileDown size={16} /> Print / DOCX
-          </Button>
+        <button
+          type="button"
+          className="toolbar-menu-btn"
+          aria-label={menuOpen ? "Close menu" : "Open menu"}
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          {menuOpen ? <X size={18} /> : <Menu size={18} />}
+        </button>
+        <div className={menuOpen ? "toolbar-collapse open" : "toolbar-collapse"}>
+          <div className="segmented" role="group" aria-label="View">
+            {(["edit", "preview"] as const).map((item) => (
+              <button
+                key={item}
+                type="button"
+                aria-pressed={mode === item}
+                onClick={() => {
+                  setMode(item);
+                  setMenuOpen(false);
+                }}
+              >
+                {item === "edit" ? "Editor" : "Preview"}
+              </button>
+            ))}
+          </div>
+          <div className="toolbar-actions">
+            <Button
+              tone="primary"
+              onClick={() => {
+                setMenuOpen(false);
+                window.print();
+              }}
+            >
+              <Printer size={16} /> Print / PDF
+            </Button>
+            <Button
+              onClick={() => {
+                setMenuOpen(false);
+                void downloadScheduleDocx(state, day);
+              }}
+            >
+              <FileDown size={16} /> Print / DOCX
+            </Button>
+          </div>
         </div>
       </header>
       <div

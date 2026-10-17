@@ -60,7 +60,8 @@ export function cleanBatchNumber(name: string): string {
 
 export function batchLines(name: string): string[] {
   const clean = cleanBatchNumber(name);
-  return clean ? [clean] : [""];
+  if (!clean) return [""];
+  return [clean, "Batch"];
 }
 
 export function sessionSpanLabel(numbers: number[]): string {

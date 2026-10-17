@@ -1,16 +1,18 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { AlertTriangle, Link2, Plus, Trash2 } from "lucide-react";
-import { buildTimeline, cellHasConflict, findConflicts, maxSpanFrom, rowCells, type SheetSession } from "../lib/schedule";
-import { formatModuleCode, orderedManagers, parseModuleCode, rosterRange } from "../lib/text";
+import { buildTimeline, cellHasConflict, findConflicts, maxSpanFrom, rowCells, type SheetSession, type Timeline } from "../lib/schedule";
+import { cleanBatchNumber, formatModuleCode, orderedManagers, parseModuleCode, rosterRange, sessionSpanLabel } from "../lib/text";
 import { formatClock, formatRange } from "../lib/time";
 import type { Batch, CellContent, DayPlan } from "../lib/types";
 import { useSchedule } from "../state";
+import { PlainSelect } from "./PlainSelect";
 import { Button, ConfirmDialog } from "./ui";
 
 export function GridEditor({ day }: { day: DayPlan }) {
   const { state, dispatch } = useSchedule();
   const [batchToDelete, setBatchToDelete] = useState<Batch | null>(null);
   const [slotToDelete, setSlotToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [mobileBatchId, setMobileBatchId] = useState(state.batches[0]?.id ?? "");
   const timeline = buildTimeline(day);
   const conflicts = state.showConflicts ? findConflicts(state.batches, day) : [];
   const rows = state.batches.map((batch) => ({
@@ -19,16 +21,13 @@ export function GridEditor({ day }: { day: DayPlan }) {
     cells: rowCells(day, batch.id),
   }));
   const sessionCount = timeline.slots.filter((slot) => slot.kind === "session").length;
+  const mobileRow = rows.find((row) => row.batch.id === mobileBatchId) ?? rows[0];
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <div className="editor-tools">
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            tone="primary"
-            onClick={() => dispatch({ type: "add-batch" })}
-            title="Add a new batch row"
-          >
+          <Button tone="primary" onClick={() => dispatch({ type: "add-batch" })} title="Add a new batch row">
             <Plus size={15} /> Add Batch
           </Button>
           <Button
@@ -60,115 +59,117 @@ export function GridEditor({ day }: { day: DayPlan }) {
       ) : null}
 
       {state.batches.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-stone-300 p-6 text-center">
-          <p className="mb-3 text-sm text-stone-600">No batches in the grid yet.</p>
+        <div className="empty-grid">
+          <p>No batches in the grid yet.</p>
           <Button tone="primary" onClick={() => dispatch({ type: "add-batch" })}>
             <Plus size={15} /> Add First Batch
           </Button>
         </div>
       ) : (
         <div>
-          <div className="edit-grid-wrap">
-            <table className="edit-grid">
-              <thead>
-                <tr>
-                  <th style={{ width: "9%" }}>Batch</th>
-                  <th style={{ width: "11%" }}>
-                    {state.recapLabel}
-                    <span className="time-note">{formatRange(timeline.recap.start, timeline.recap.end)}</span>
-                  </th>
-                  {timeline.slots.map((slot) => {
-                    const isSession = slot.kind === "session";
-                    const canDelete = isSession ? sessionCount > 1 : true;
-                    return (
-                      <th key={slot.id} style={{ width: slot.kind === "break" ? "5%" : undefined }}>
-                        <div className="slot-header-cell">
-                          <div className="slot-title">
-                            {isSession ? `Session - ${slot.number}` : formatClock(slot.start)}
-                          </div>
-                          <span className="time-note">
-                            {isSession ? formatRange(slot.start, slot.end) : formatClock(slot.end)}
-                          </span>
-                          {canDelete ? (
-                            <button
-                              type="button"
-                              className="slot-del-btn"
-                              title={`Delete ${isSession ? `Session - ${slot.number}` : slot.label || "Break"}`}
-                              aria-label={`Delete ${isSession ? `Session - ${slot.number}` : slot.label || "Break"}`}
-                              onClick={() =>
-                                setSlotToDelete({
-                                  id: slot.id,
-                                  name: isSession ? `Session - ${slot.number}` : slot.label || "Break",
-                                })
-                              }
-                            >
-                              <Trash2 size={11} />
-                            </button>
-                          ) : null}
-                        </div>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, rowIndex) => (
-                  <tr key={row.batch.id}>
-                    <th className="batch-read">
-                      <InlineBatchCell
-                        batch={row.batch}
-                        onDelete={() => setBatchToDelete(row.batch)}
-                      />
+          <div className="editor-desktop">
+            <div className="edit-grid-wrap">
+              <table className="edit-grid">
+                <thead>
+                  <tr>
+                    <th style={{ width: "9%" }}>Batch</th>
+                    <th style={{ width: "12%" }}>
+                      {state.recapLabel}
+                      <span className="time-note">{formatRange(timeline.recap.start, timeline.recap.end)}</span>
                     </th>
-                    <td className="recap-edit-cell">
-                      <InlineManagerCell
-                        dayId={day.id}
-                        batch={row.batch}
-                        managers={row.managers}
-                      />
-                    </td>
-                    {row.cells.map((cell) => {
-                      if (cell.kind === "skip") return null;
-                      if (cell.kind === "break") {
-                        if (rowIndex !== 0) return null;
-                        return (
-                          <td key={cell.id} rowSpan={rows.length} className="text-center">
-                            <span className="vlabel">{cell.label}</span>
-                          </td>
-                        );
-                      }
-                      const clash = cellHasConflict(conflicts, row.batch.id, cell.sessionIds);
+                    {timeline.slots.map((slot) => {
+                      const isSession = slot.kind === "session";
+                      const canDelete = isSession ? sessionCount > 1 : true;
                       return (
-                        <td key={cell.anchorId} colSpan={cell.span} className={clash ? "session-edit conflict" : "session-edit"}>
-                          <InlineCell day={day} batchId={row.batch.id} cell={cell} />
-                        </td>
+                        <th key={slot.id} style={{ width: slot.kind === "break" ? "5%" : undefined }}>
+                          <div className="slot-header-cell">
+                            <div className="slot-title">
+                              {isSession ? `Session - ${slot.number}` : formatClock(slot.start)}
+                            </div>
+                            <span className="time-note">
+                              {isSession ? formatRange(slot.start, slot.end) : formatClock(slot.end)}
+                            </span>
+                            {canDelete ? (
+                              <button
+                                type="button"
+                                className="slot-del-btn"
+                                title={`Delete ${isSession ? `Session - ${slot.number}` : slot.label || "Break"}`}
+                                aria-label={`Delete ${isSession ? `Session - ${slot.number}` : slot.label || "Break"}`}
+                                onClick={() =>
+                                  setSlotToDelete({
+                                    id: slot.id,
+                                    name: isSession ? `Session - ${slot.number}` : slot.label || "Break",
+                                  })
+                                }
+                              >
+                                <Trash2 size={11} />
+                              </button>
+                            ) : null}
+                          </div>
+                        </th>
                       );
                     })}
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={2 + timeline.slots.length} className="add-batch-row">
-                    <button
-                      type="button"
-                      className="add-batch-row-btn"
-                      onClick={() => dispatch({ type: "add-batch" })}
-                    >
-                      <Plus size={13} /> Add Batch
-                    </button>
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
+                </thead>
+                <tbody>
+                  {rows.map((row, rowIndex) => (
+                    <tr key={row.batch.id}>
+                      <th className="batch-read">
+                        <InlineBatchCell batch={row.batch} onDelete={() => setBatchToDelete(row.batch)} />
+                      </th>
+                      <td className="recap-edit-cell">
+                        <InlineManagerCell dayId={day.id} batch={row.batch} managers={row.managers} />
+                      </td>
+                      {row.cells.map((cell) => {
+                        if (cell.kind === "skip") return null;
+                        if (cell.kind === "break") {
+                          if (rowIndex !== 0) return null;
+                          return (
+                            <td key={cell.id} rowSpan={rows.length} className="text-center">
+                              <span className="vlabel">{cell.label}</span>
+                            </td>
+                          );
+                        }
+                        const clash = cellHasConflict(conflicts, row.batch.id, cell.sessionIds);
+                        return (
+                          <td key={cell.anchorId} colSpan={cell.span} className={clash ? "session-edit conflict" : "session-edit"}>
+                            <InlineCell day={day} batchId={row.batch.id} cell={cell} />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={2 + timeline.slots.length} className="add-batch-row">
+                      <button type="button" className="add-batch-row-btn" onClick={() => dispatch({ type: "add-batch" })}>
+                        <Plus size={13} /> Add Batch
+                      </button>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
-          <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+
+          {mobileRow ? (
+            <MobileBatchList
+              day={day}
+              timeline={timeline}
+              rows={rows}
+              selectedId={mobileRow.batch.id}
+              onSelect={setMobileBatchId}
+              conflicts={conflicts}
+              onDeleteBatch={setBatchToDelete}
+              onDeleteSlot={setSlotToDelete}
+              sessionCount={sessionCount}
+            />
+          ) : null}
+
+          <div className="editor-footer">
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                tone="ghost"
-                className="text-xs"
-                onClick={() => dispatch({ type: "add-batch" })}
-              >
+              <Button tone="ghost" className="text-xs" onClick={() => dispatch({ type: "add-batch" })}>
                 <Plus size={13} /> Add Batch
               </Button>
               <Button
@@ -194,14 +195,11 @@ export function GridEditor({ day }: { day: DayPlan }) {
                   tone="danger"
                   className="text-xs"
                   onClick={() => {
-                    const lastSession = [...day.slots].reverse().find((s) => s.kind === "session");
+                    const lastSession = [...day.slots].reverse().find((slot) => slot.kind === "session");
                     if (lastSession) {
-                      const timed = timeline.slots.find((s) => s.id === lastSession.id);
+                      const timed = timeline.slots.find((slot) => slot.id === lastSession.id);
                       const num = timed && timed.kind === "session" ? timed.number : "";
-                      setSlotToDelete({
-                        id: lastSession.id,
-                        name: `Session - ${num}`,
-                      });
+                      setSlotToDelete({ id: lastSession.id, name: `Session - ${num}` });
                     }
                   }}
                   title="Delete last session"
@@ -210,8 +208,9 @@ export function GridEditor({ day }: { day: DayPlan }) {
                 </Button>
               ) : null}
             </div>
-            <span className="text-xs text-stone-500">
-              {rows.length} {rows.length === 1 ? "batch" : "batches"} · {sessionCount} {sessionCount === 1 ? "session" : "sessions"}
+            <span className="count-note">
+              {rows.length} {rows.length === 1 ? "batch" : "batches"} · {sessionCount}{" "}
+              {sessionCount === 1 ? "session" : "sessions"}
             </span>
           </div>
         </div>
@@ -260,14 +259,121 @@ function ClashSwitch() {
   );
 }
 
-function InlineCell({ day, batchId, cell }: { day: DayPlan; batchId: string; cell: SheetSession }) {
+function MobileBatchList({
+  day,
+  timeline,
+  rows,
+  selectedId,
+  onSelect,
+  conflicts,
+  onDeleteBatch,
+  onDeleteSlot,
+  sessionCount,
+}: {
+  day: DayPlan;
+  timeline: Timeline;
+  rows: Array<{ batch: Batch; managers: string[]; cells: ReturnType<typeof rowCells> }>;
+  selectedId: string;
+  onSelect: (id: string) => void;
+  conflicts: ReturnType<typeof findConflicts>;
+  onDeleteBatch: (batch: Batch) => void;
+  onDeleteSlot: (slot: { id: string; name: string }) => void;
+  sessionCount: number;
+}) {
+  const row = rows.find((item) => item.batch.id === selectedId) ?? rows[0];
+  if (!row) return null;
+
+  return (
+    <div className="editor-mobile">
+      <div className="batch-picker" role="tablist" aria-label="Batches">
+        {rows.map((item) => (
+          <button
+            key={item.batch.id}
+            type="button"
+            role="tab"
+            aria-selected={item.batch.id === row.batch.id}
+            onClick={() => onSelect(item.batch.id)}
+          >
+            {cleanBatchNumber(item.batch.name) || "Batch"}
+          </button>
+        ))}
+      </div>
+      <article className="batch-session-card">
+        <div className="mobile-batch-head">
+          <InlineBatchCell batch={row.batch} onDelete={() => onDeleteBatch(row.batch)} />
+        </div>
+        <div className="mobile-managers">
+          <span className="mobile-kicker">Day managers</span>
+          <InlineManagerCell dayId={day.id} batch={row.batch} managers={row.managers} />
+        </div>
+        <div className="session-stack">
+          {row.cells.map((cell) => {
+            if (cell.kind === "skip") return null;
+            if (cell.kind === "break") {
+              const timed = timeline.slots.find((slot) => slot.id === cell.id);
+              const when = timed ? formatRange(timed.start, timed.end) : "";
+              return (
+                <div key={cell.id} className="break-divider">
+                  <span>
+                    {cell.label}
+                    {when ? ` · ${when}` : ""}
+                  </span>
+                </div>
+              );
+            }
+            const clash = cellHasConflict(conflicts, row.batch.id, cell.sessionIds);
+            const timed = cell.sessionIds
+              .map((id) => timeline.slots.find((slot) => slot.id === id))
+              .filter((slot) => slot?.kind === "session");
+            const when =
+              timed.length > 0 ? formatRange(timed[0]!.start, timed[timed.length - 1]!.end) : "";
+            const name = sessionSpanLabel(cell.numbers);
+            return (
+              <section key={cell.anchorId} className={clash ? "session-card conflict" : "session-card"}>
+                <header className="session-card-head">
+                  <div>
+                    <strong>{name}</strong>
+                    {when ? <span className="time-note">{when}</span> : null}
+                  </div>
+                  {sessionCount > 1 && cell.span === 1 ? (
+                    <button
+                      type="button"
+                      className="text-del"
+                      aria-label={`Delete ${name}`}
+                      onClick={() => onDeleteSlot({ id: cell.anchorId, name })}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  ) : null}
+                </header>
+                <InlineCell day={day} batchId={row.batch.id} cell={cell} layout="card" />
+              </section>
+            );
+          })}
+        </div>
+      </article>
+    </div>
+  );
+}
+
+function InlineCell({
+  day,
+  batchId,
+  cell,
+  layout = "table",
+}: {
+  day: DayPlan;
+  batchId: string;
+  cell: SheetSession;
+  layout?: "table" | "card";
+}) {
   const { state, dispatch } = useSchedule();
   const [extra, setExtra] = useState(0);
   const parsed = parseModuleCode(cell.content.code);
   const moduleNumber = parsed?.moduleNumber ?? "";
   const subNumber = parsed?.subNumber ?? "";
   const filled = cell.content.teachers.map((name) => name.trim()).filter(Boolean);
-  const rows = filled.length + extra > 0 ? [...filled, ...Array.from({ length: extra }, () => "")] : [""];
+  const rows = [...filled, ...Array.from({ length: extra }, () => "")];
   const maxSpan = maxSpanFrom(day.slots, cell.anchorId);
   const canMerge = maxSpan >= 2 || cell.span >= 2;
 
@@ -295,7 +401,7 @@ function InlineCell({ day, batchId, cell }: { day: DayPlan; batchId: string; cel
   }
 
   return (
-    <div className="inline-cell">
+    <div className={layout === "card" ? "inline-cell card-layout" : "inline-cell"}>
       <button
         type="button"
         className="merge-corner"
@@ -312,63 +418,45 @@ function InlineCell({ day, batchId, cell }: { day: DayPlan; batchId: string; cel
           })
         }
       >
-        <Link2 size={11} />
+        <Link2 size={layout === "card" ? 16 : 11} />
       </button>
       <div className="inline-mods">
-        <select
-          className="sheet-select"
-          aria-label="Module number"
+        <PlainSelect
+          className="mod"
+          ariaLabel="Module number"
           value={moduleNumber}
-          onChange={(event) => update({ ...cell.content, code: formatModuleCode(event.target.value, subNumber) })}
-        >
-          <option value="">—</option>
-          {withCurrent(state.moduleNumbers, moduleNumber).map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
-        <select
-          className="sheet-select sub"
-          aria-label="Sub-number"
+          options={withCurrent(state.moduleNumbers, moduleNumber)}
+          onChange={(value) => update({ ...cell.content, code: formatModuleCode(value, subNumber) })}
+        />
+        <PlainSelect
+          className="sub"
+          ariaLabel="Sub-number"
           value={subNumber}
-          onChange={(event) => update({ ...cell.content, code: formatModuleCode(moduleNumber, event.target.value) })}
-        >
-          <option value="">—</option>
-          {withCurrent(state.subNumbers, subNumber).map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+          options={withCurrent(state.subNumbers, subNumber)}
+          onChange={(value) => update({ ...cell.content, code: formatModuleCode(moduleNumber, value) })}
+        />
       </div>
       <div className="inline-teachers">
         {rows.map((name, index) => (
-          <select
+          <PlainSelect
             key={`${cell.anchorId}-teacher-${index}`}
-            className="sheet-select teacher"
-            aria-label={index === 0 ? "Teacher" : `Teacher ${index + 1}`}
+            className="teacher"
+            ariaLabel={index === 0 ? "Teacher" : `Teacher ${index + 1}`}
             value={name}
-            onChange={(event) => setTeacher(index, event.target.value)}
-          >
-            <option value="">—</option>
-            {teacherChoices(
+            options={teacherChoices(
               state.teachers.map((teacher) => teacher.name),
               name,
               filled,
-            ).map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            )}
+            onChange={(value) => setTeacher(index, value)}
+          />
         ))}
         <button
           type="button"
           className="inline-plus"
           aria-label="Add teacher"
           onClick={() => {
-            if (rows[rows.length - 1] === "") return;
+            if (rows.length > 0 && rows[rows.length - 1] === "") return;
             setExtra((count) => count + 1);
           }}
         >
@@ -391,30 +479,15 @@ function withCurrent(options: string[], current: string): string[] {
   return [current, ...options];
 }
 
-function InlineBatchCell({
-  batch,
-  onDelete,
-}: {
-  batch: Batch;
-  onDelete: () => void;
-}) {
+function InlineBatchCell({ batch, onDelete }: { batch: Batch; onDelete: () => void }) {
   const { dispatch } = useSchedule();
-  const cleanNumber = batch.name.replace(/\s*Batch$/i, "").trim();
-  const [val, setVal] = useState(cleanNumber);
-  const [isFocused, setIsFocused] = useState(false);
-
-  useEffect(() => {
-    if (!isFocused) {
-      setVal(batch.name.replace(/\s*Batch$/i, "").trim());
-    }
-  }, [batch.name, isFocused]);
+  const cleanNumber = cleanBatchNumber(batch.name);
+  const [draft, setDraft] = useState<string | null>(null);
 
   function commit(next: string) {
     const trimmed = next.trim();
-    if (!trimmed) {
-      setVal(cleanNumber);
-      return;
-    }
+    setDraft(null);
+    if (!trimmed || trimmed === cleanNumber) return;
     dispatch({ type: "rename-batch", id: batch.id, name: trimmed });
   }
 
@@ -423,21 +496,13 @@ function InlineBatchCell({
       <input
         className="batch-number-input"
         aria-label="Batch number"
-        value={isFocused ? val : cleanNumber}
+        value={draft ?? cleanNumber}
         placeholder="9th"
-        onFocus={() => {
-          setIsFocused(true);
-          setVal(cleanNumber);
-        }}
-        onChange={(e) => setVal(e.target.value)}
-        onBlur={() => {
-          setIsFocused(false);
-          commit(val);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            (e.target as HTMLInputElement).blur();
-          }
+        onFocus={() => setDraft(cleanNumber)}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => commit(draft ?? cleanNumber)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") (event.target as HTMLInputElement).blur();
         }}
       />
       <button
@@ -472,9 +537,8 @@ function InlineManagerCell({
 }) {
   const { dispatch } = useSchedule();
   const [extra, setExtra] = useState(0);
-
   const filled = managers.map((id) => id.trim()).filter(Boolean);
-  const rows = filled.length + extra > 0 ? [...filled, ...Array.from({ length: extra }, () => "")] : [""];
+  const rows = [...filled, ...Array.from({ length: extra }, () => "")];
 
   function setManager(index: number, id: string) {
     const list = filled.slice();
@@ -496,19 +560,13 @@ function InlineManagerCell({
         {rows.map((id, index) => (
           <span key={`${batch.id}-mgr-${index}`} className="recap-item">
             {index > 0 ? <span className="recap-amp">&</span> : null}
-            <select
-              className="sheet-select recap"
-              aria-label={index === 0 ? "Day manager ID" : `Day manager ID ${index + 1}`}
+            <PlainSelect
+              className="recap"
+              ariaLabel={index === 0 ? "Day manager ID" : `Day manager ID ${index + 1}`}
               value={id}
-              onChange={(e) => setManager(index, e.target.value)}
-            >
-              <option value="">—</option>
-              {managerChoices(batch.roster, id, filled).map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              options={managerChoices(batch.roster, id, filled)}
+              onChange={(value) => setManager(index, value)}
+            />
           </span>
         ))}
         <button
@@ -517,7 +575,7 @@ function InlineManagerCell({
           aria-label="Add day manager"
           title="Add another day manager"
           onClick={() => {
-            if (rows[rows.length - 1] === "") return;
+            if (rows.length > 0 && rows[rows.length - 1] === "") return;
             setExtra((count) => count + 1);
           }}
         >
@@ -527,5 +585,3 @@ function InlineManagerCell({
     </div>
   );
 }
-
-

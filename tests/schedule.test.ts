@@ -11,7 +11,7 @@ import {
   findConflicts,
   sessionsContiguous,
 } from "../src/lib/schedule";
-import { formatModuleCode, joinWithAnd, parseModuleCode, rotateIds } from "../src/lib/text";
+import { batchLines, formatModuleCode, joinWithAnd, parseModuleCode, rotateIds } from "../src/lib/text";
 import { formatClock, weekdayName } from "../src/lib/time";
 
 describe("demo day", () => {
@@ -164,6 +164,16 @@ describe("rotation, merges and clashes", () => {
     expect(xml).toContain("Day – 07");
     expect(xml).toContain("Dr. Litan Kanti Halder");
     expect(xml?.match(/Tea Break/g)).toHaveLength(1);
+  });
+
+  it("prints batch names as a number over the word Batch", () => {
+    expect(batchLines("9th Batch")).toEqual(["9th", "Batch"]);
+    expect(batchLines("9th")).toEqual(["9th", "Batch"]);
+  });
+
+  it("names a new batch with the next ordinal", () => {
+    const next = scheduleReducer(createDemoState(), { type: "add-batch" });
+    expect(next.batches.at(-1)?.name).toBe("14th");
   });
 
   it("stops at 10 sessions", () => {
