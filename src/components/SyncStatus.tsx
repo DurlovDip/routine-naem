@@ -5,24 +5,67 @@ import { useSchedule } from "../state";
 import { Button } from "./ui";
 
 const SCHEMA_SQL = `-- Run this in Supabase SQL Editor:
+-- 1. Teachers
+create table if not exists public.teachers (
+  id text primary key,
+  name text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.teachers enable row level security;
+drop policy if exists "Allow public all teachers" on public.teachers;
+create policy "Allow public all teachers" on public.teachers for all using (true) with check (true);
+
+-- 2. Modules
+create table if not exists public.modules (
+  id text primary key,
+  code text not null,
+  title text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.modules enable row level security;
+drop policy if exists "Allow public all modules" on public.modules;
+create policy "Allow public all modules" on public.modules for all using (true) with check (true);
+
+-- 3. Batches
+create table if not exists public.batches (
+  id text primary key,
+  name text not null,
+  roster text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+alter table public.batches enable row level security;
+drop policy if exists "Allow public all batches" on public.batches;
+create policy "Allow public all batches" on public.batches for all using (true) with check (true);
+
+-- 4. Schedules
 create table if not exists public.schedules (
   id text primary key default 'default',
   data jsonb not null,
   updated_at timestamptz not null default now()
 );
-
 alter table public.schedules enable row level security;
+drop policy if exists "Allow public all schedules" on public.schedules;
+create policy "Allow public all schedules" on public.schedules for all using (true) with check (true);
 
-create policy "Allow public read schedules"
-  on public.schedules for select using (true);
-
-create policy "Allow public insert schedules"
-  on public.schedules for insert with check (true);
-
-create policy "Allow public update schedules"
-  on public.schedules for update using (true) with check (true);
-
-alter publication supabase_realtime add table public.schedules;`;
+-- 5. Realtime publication
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'teachers') then
+    alter publication supabase_realtime add table public.teachers;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'modules') then
+    alter publication supabase_realtime add table public.modules;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'batches') then
+    alter publication supabase_realtime add table public.batches;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'schedules') then
+    alter publication supabase_realtime add table public.schedules;
+  end if;
+end $$;`;
 
 export function SyncStatusButton() {
   const { syncStatus, lastSyncedAt, refreshFromCloud } = useSchedule();
