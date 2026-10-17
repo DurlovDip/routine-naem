@@ -88,7 +88,7 @@ export function ScheduleSheet({
           </colgroup>
           <thead>
             <tr>
-              <th rowSpan={2} className="corner" />
+              <th rowSpan={2} className="corner session-title">Batch</th>
               <th className="session-title">{state.recapLabel}</th>
               {timeline.slots.map((slot) =>
                 slot.kind === "break" ? (

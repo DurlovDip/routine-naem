@@ -290,10 +290,34 @@ export function scheduleReducer(state: AppState, action: Action): AppState {
         slots.splice(index, 0, slot);
         return sanitizeDay({ ...day, slots });
       });
+function nextBatchName(batches: Batch[]): string {
+  if (batches.length === 0) return "1st";
+  const last = batches[batches.length - 1];
+  const clean = last.name.replace(/\s*Batch$/i, "").trim();
+  const match = clean.match(/^(\d+)(?:st|nd|rd|th)?$/i);
+  if (match) {
+    const num = parseInt(match[1], 10) + 1;
+    const hasOrdinal = /(?:st|nd|rd|th)$/i.test(clean);
+    if (hasOrdinal) {
+      const suffix =
+        num % 10 === 1 && num % 100 !== 11
+          ? "st"
+          : num % 10 === 2 && num % 100 !== 12
+            ? "nd"
+            : num % 10 === 3 && num % 100 !== 13
+              ? "rd"
+              : "th";
+      return `${num}${suffix}`;
+    }
+    return String(num);
+  }
+  return String(batches.length + 1);
+}
+
     case "add-batch": {
       const batch: Batch = {
         id: uid("batch"),
-        name: "New Batch",
+        name: nextBatchName(state.batches),
         roster: rosterRange(1, 30),
       };
       return {

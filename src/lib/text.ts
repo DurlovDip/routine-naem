@@ -52,12 +52,15 @@ export function rotateIds(roster: string[], current: string[]): string[] {
   return next;
 }
 
-export function batchLines(name: string): string[] {
+export function cleanBatchNumber(name: string): string {
   const trimmed = name.trim();
-  if (!trimmed) return ["Batch"];
-  const match = trimmed.match(/^(.*)\s+(Batch)$/i);
-  if (match?.[1] && match[2]) return [match[1], match[2]];
-  return [trimmed];
+  if (!trimmed) return "";
+  return trimmed.replace(/\s+Batch$/i, "");
+}
+
+export function batchLines(name: string): string[] {
+  const clean = cleanBatchNumber(name);
+  return clean ? [clean] : [""];
 }
 
 export function sessionSpanLabel(numbers: number[]): string {

@@ -327,13 +327,188 @@ button { cursor: pointer; }
 .merge-corner[aria-pressed="true"] { color: var(--pine); }
 .merge-corner:disabled { opacity: 0.28; }
 .recap-read { padding: 0.4rem 0.25rem; text-align: center; font-weight: 700; line-height: 1.25; }
-.batch-read { font-weight: 700; text-align: center; padding: 0.3rem; line-height: 1.15; }
+.batch-read { font-weight: 700; text-align: center; padding: 0.2rem 0.25rem; line-height: 1.15; }
+.batch-header-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  padding: 0.15rem 1.25rem 0.15rem 0.2rem;
+}
+.batch-number-input {
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  font-weight: 700;
+  font-size: 0.88rem;
+  text-align: center;
+  padding: 0.2rem 0.15rem;
+  border-radius: 0.35rem;
+  color: #1c1915;
+  transition: all 0.15s ease;
+}
+.batch-number-input:hover {
+  background: rgba(255, 255, 255, 0.7);
+  border-color: #d8cfc2;
+}
+.batch-number-input:focus {
+  background: white;
+  border-color: var(--pine);
+  outline: 2px solid rgba(27, 67, 50, 0.2);
+}
+.batch-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.batch-del-btn {
+  position: absolute;
+  right: 1px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 0.3rem;
+  border: 0;
+  background: transparent;
+  color: #9c9386;
+  opacity: 0.35;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.batch-read:hover .batch-del-btn,
+.batch-del-btn:focus-visible {
+  opacity: 1;
+}
+.batch-del-btn:hover {
+  background: #fde8e7;
+  color: #b91c1c;
+}
+
+.recap-edit-cell {
+  padding: 0.25rem 0.25rem;
+  text-align: center;
+  vertical-align: middle;
+}
+.recap-edit-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+}
+.recap-label-small {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #655d54;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+}
+.recap-selects {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+}
+.recap-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+.recap-amp {
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: #554e45;
+  user-select: none;
+}
+.sheet-select.recap {
+  font-weight: 700;
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+  padding: 0.05rem 0.15rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+.sheet-select.recap:hover, .sheet-select.recap:focus {
+  border-color: #d8cfc2;
+  background: white;
+  outline: none;
+}
+
+.slot-header-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem 0.2rem;
+}
+.slot-del-btn {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 0.25rem;
+  border: 0;
+  background: transparent;
+  color: #9c9386;
+  opacity: 0.35;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.edit-grid thead th:hover .slot-del-btn,
+.slot-del-btn:focus-visible {
+  opacity: 1;
+}
+.slot-del-btn:hover {
+  background: #fde8e7;
+  color: #b91c1c;
+}
+
 .vlabel {
   writing-mode: vertical-rl;
   transform: rotate(180deg);
   font-weight: 700;
   font-size: 0.72rem;
   white-space: nowrap;
+}
+
+.add-batch-row {
+  background: #fbfaf7;
+  padding: 0.25rem 0.35rem;
+  text-align: center;
+  border-top: 1px dashed #e3dbce;
+}
+.add-batch-row-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px dashed #d5ccbe;
+  background: white;
+  color: #574f45;
+  font-weight: 650;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.add-batch-row-btn:hover {
+  border-color: var(--pine);
+  color: var(--pine);
+  background: #eef6f1;
 }
 
 .settings-panel { display: grid; gap: 1.1rem; }

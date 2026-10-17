@@ -8,11 +8,11 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 4731,
-    strictPort: true,
+    strictPort: false,
   },
   preview: {
     host: "0.0.0.0",
     port: 4731,
-    strictPort: true,
+    strictPort: false,
   },
 });

@@ -141,7 +141,7 @@ export function buildScheduleDocument(state: AppState, day: DayPlan, signature?:
   const tableWidth = widths.reduce((sum, value) => sum + value, 0);
 
   const headerRow: TableCell[] = [
-    cell({ paragraphs: [text("")], width: widths[0], rowSpan: 2 }),
+    cell({ paragraphs: [text("Batch", { bold: true, size: 20 })], width: widths[0], rowSpan: 2 }),
     cell({ paragraphs: [text(state.recapLabel, { bold: true, size: 20 })], width: widths[1] }),
   ];
   timeline.slots.forEach((slot, index) => {
