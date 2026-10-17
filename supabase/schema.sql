@@ -29,10 +29,13 @@ drop policy if exists "Allow public all modules" on public.modules;
 create policy "Allow public all modules" on public.modules for all using (true) with check (true);
 
 -- 3. Batches Table
-create table if not exists public.batches (
-  id text primary key,
-  name text not null,
-  roster text[] not null default '{}',
+-- id is integer (number), name default blank, number_of_students default 40
+drop table if exists public.batches cascade;
+
+create table public.batches (
+  id integer primary key,
+  name text not null default '',
+  number_of_students integer not null default 40,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -107,11 +110,14 @@ insert into public.modules (id, code, title) values
   ('module-14', 'M- 8.10', '')
 on conflict (id) do update set code = excluded.code, title = excluded.title, updated_at = now();
 
--- 8. Initial Seed: Batches
-insert into public.batches (id, name, roster) values
-  ('batch-9', '9th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30']),
-  ('batch-10', '10th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30']),
-  ('batch-11', '11th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30']),
-  ('batch-12', '12th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30']),
-  ('batch-13', '13th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30'])
-on conflict (id) do update set name = excluded.name, roster = excluded.roster, updated_at = now();
+-- 8. Initial Seed: Batches (id: integer, name: default blank, number_of_students: 40)
+insert into public.batches (id, name, number_of_students) values
+  (9, '', 40),
+  (10, '', 40),
+  (11, '', 40),
+  (12, '', 40),
+  (13, '', 40)
+on conflict (id) do update set
+  name = excluded.name,
+  number_of_students = excluded.number_of_students,
+  updated_at = now();

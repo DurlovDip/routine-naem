@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createDemoState } from "./demo";
-import { catalogFromModules } from "./text";
+import { catalogFromModules, rosterRange } from "./text";
 import { normalizeState } from "./storage";
 import type { AppState, Batch, ModuleEntry, Teacher } from "./types";
 
@@ -35,7 +35,7 @@ export async function fetchRemoteSchedule(): Promise<AppState | null> {
       supabase.from(SCHEDULE_TABLE).select("data").eq("id", SCHEDULE_ROW_ID).maybeSingle(),
       supabase.from(TEACHERS_TABLE).select("id, name").order("name"),
       supabase.from(MODULES_TABLE).select("id, code, title").order("code"),
-      supabase.from(BATCHES_TABLE).select("id, name, roster").order("name"),
+      supabase.from(BATCHES_TABLE).select("id, name, number_of_students").order("id"),
     ]);
 
     let baseState: AppState | null = null;
@@ -76,11 +76,20 @@ export async function fetchRemoteSchedule(): Promise<AppState | null> {
 
     // Merge relational batches
     if (batchesRes.data && batchesRes.data.length > 0) {
-      baseState.batches = batchesRes.data.map((row: { id: string; name: string; roster: string[] }): Batch => ({
-        id: row.id,
-        name: row.name,
-        roster: Array.isArray(row.roster) ? row.roster : [],
-      }));
+      baseState.batches = batchesRes.data.map((row: {
+        id: number | string;
+        name: string;
+        number_of_students?: number;
+      }): Batch => {
+        const num = typeof row.id === "number" ? row.id : parseInt(String(row.id).replace(/\D/g, ""), 10) || 1;
+        const count = typeof row.number_of_students === "number" ? row.number_of_students : 40;
+        return {
+          id: `batch-${num}`,
+          name: row.name ?? "",
+          numberOfStudents: count,
+          roster: rosterRange(1, count),
+        };
+      });
     }
 
     return baseState;
@@ -136,19 +145,26 @@ async function syncModules(modules: ModuleEntry[], timestamp: string) {
 async function syncBatches(batches: Batch[], timestamp: string) {
   if (!supabase) return;
   if (batches.length > 0) {
-    const rows = batches.map((b) => ({
-      id: b.id,
-      name: b.name,
-      roster: b.roster,
-      updated_at: timestamp,
-    }));
+    const rows = batches.map((b, index) => {
+      const numId = parseInt(b.id.replace(/\D/g, ""), 10) || (index + 1);
+      return {
+        id: numId,
+        name: b.name ?? "",
+        number_of_students: b.numberOfStudents ?? 40,
+        updated_at: timestamp,
+      };
+    });
     await supabase.from(BATCHES_TABLE).upsert(rows, { onConflict: "id" });
   }
 
   const { data: remoteRows, error } = await supabase.from(BATCHES_TABLE).select("id");
   if (!error && remoteRows) {
-    const activeIds = new Set(batches.map((b) => b.id));
-    const toDelete = remoteRows.map((r: { id: string }) => r.id).filter((id) => !activeIds.has(id));
+    const activeNumIds = new Set(
+      batches.map((b, idx) => parseInt(b.id.replace(/\D/g, ""), 10) || (idx + 1)),
+    );
+    const toDelete = remoteRows
+      .map((r: { id: number }) => r.id)
+      .filter((id) => !activeNumIds.has(id));
     if (toDelete.length > 0) {
       await supabase.from(BATCHES_TABLE).delete().in("id", toDelete);
     }

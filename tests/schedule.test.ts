@@ -171,9 +171,13 @@ describe("rotation, merges and clashes", () => {
     expect(batchLines("9th")).toEqual(["9th", "Batch"]);
   });
 
-  it("names a new batch with the next ordinal", () => {
+  it("creates a new batch with blank name, next ordinal ID, and default 40 students", () => {
     const next = scheduleReducer(createDemoState(), { type: "add-batch" });
-    expect(next.batches.at(-1)?.name).toBe("14th");
+    const added = next.batches.at(-1);
+    expect(added?.name).toBe("");
+    expect(added?.id).toBe("batch-14");
+    expect(added?.numberOfStudents).toBe(40);
+    expect(added?.roster).toHaveLength(40);
   });
 
   it("stops at 10 sessions", () => {

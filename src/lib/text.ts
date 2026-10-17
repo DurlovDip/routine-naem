@@ -52,15 +52,24 @@ export function rotateIds(roster: string[], current: string[]): string[] {
   return next;
 }
 
-export function cleanBatchNumber(name: string): string {
+export function cleanBatchNumber(name: string, fallbackId?: string | number): string {
   const trimmed = name.trim();
-  if (!trimmed) return "";
-  return trimmed.replace(/\s+Batch$/i, "");
+  if (trimmed) return trimmed.replace(/\s+Batch$/i, "");
+  if (fallbackId !== undefined) {
+    const num = typeof fallbackId === "number" ? fallbackId : parseInt(String(fallbackId).replace(/\D/g, ""), 10);
+    if (num) {
+      const s = ["th", "st", "nd", "rd"];
+      const v = num % 100;
+      const suffix = s[(v - 20) % 10] || s[v] || s[0];
+      return `${num}${suffix}`;
+    }
+  }
+  return "";
 }
 
-export function batchLines(name: string): string[] {
-  const clean = cleanBatchNumber(name);
-  if (!clean) return [""];
+export function batchLines(name: string, fallbackId?: string | number): string[] {
+  const clean = cleanBatchNumber(name, fallbackId);
+  if (!clean) return ["Batch"];
   return [clean, "Batch"];
 }
 

@@ -20,6 +20,7 @@ export type ModuleEntry = {
 export type Batch = {
   id: string;
   name: string;
+  numberOfStudents?: number;
   roster: string[];
 };
 

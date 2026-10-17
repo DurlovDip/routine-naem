@@ -177,7 +177,7 @@ export function buildScheduleDocument(state: AppState, day: DayPlan, signature?:
       let column = 0;
       const children: TableCell[] = [
         cell({
-          paragraphs: batchLines(row.batch.name).map((line) => text(line, { bold: true, size: 20 })),
+          paragraphs: batchLines(row.batch.name, row.batch.id).map((line) => text(line, { bold: true, size: 20 })),
           width: widths[0],
         }),
         cell({

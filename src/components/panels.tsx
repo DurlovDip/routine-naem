@@ -2,7 +2,7 @@ import { useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { buildTimeline, sessionSlots } from "../lib/schedule";
 import { readSignatureFile } from "../lib/storage";
-import { joinWithAnd, parseRoster, rosterRange } from "../lib/text";
+import { cleanBatchNumber, joinWithAnd, parseRoster, rosterRange } from "../lib/text";
 import { formatClock, formatRange } from "../lib/time";
 import type { Batch, DayPlan, HeaderStyle } from "../lib/types";
 import { useSchedule } from "../state";
@@ -223,9 +223,12 @@ function RosterField({ batch }: { batch: Batch }) {
       <Button
         tone="quiet"
         className="mt-1"
-        onClick={() => dispatch({ type: "set-roster", id: batch.id, roster: rosterRange(1, 30) })}
+        onClick={() => {
+          const count = batch.numberOfStudents ?? 40;
+          dispatch({ type: "set-roster", id: batch.id, roster: rosterRange(1, count) });
+        }}
       >
-        Fill 01–30
+        Fill 01–{batch.numberOfStudents ?? 40}
       </Button>
     </Field>
   );
@@ -241,17 +244,40 @@ export function BatchEditor({ day }: { day: DayPlan }) {
       ) : null}
       {state.batches.map((batch, index) => {
         const selected = new Set(day.managers[batch.id] ?? []);
+        const placeholderName = cleanBatchNumber(batch.name, batch.id);
+        const studentCount = batch.numberOfStudents ?? batch.roster.length ?? 40;
         return (
           <article key={batch.id} className="batch-card">
-            <div className="mb-2 flex items-start gap-2">
-              <input
-                className="field"
-                aria-label="Batch name"
-                value={batch.name}
-                onChange={(event) =>
-                  dispatch({ type: "rename-batch", id: batch.id, name: event.target.value })
-                }
-              />
+            <div className="mb-2 flex items-center gap-2">
+              <div className="flex-1">
+                <input
+                  className="field"
+                  aria-label="Batch name"
+                  placeholder={placeholderName ? `${placeholderName} Batch` : "Batch name"}
+                  value={batch.name}
+                  onChange={(event) =>
+                    dispatch({ type: "rename-batch", id: batch.id, name: event.target.value })
+                  }
+                />
+              </div>
+              <div className="flex items-center gap-1 shrink-0" title="Number of students">
+                <span className="text-xs text-stone-500">Students:</span>
+                <input
+                  className="field w-16 text-center"
+                  type="number"
+                  min={1}
+                  max={200}
+                  aria-label="Number of students"
+                  value={studentCount}
+                  onChange={(event) =>
+                    dispatch({
+                      type: "set-batch-student-count",
+                      id: batch.id,
+                      count: Number(event.target.value),
+                    })
+                  }
+                />
+              </div>
               <IconButton
                 label="Move batch up"
                 disabled={index === 0}

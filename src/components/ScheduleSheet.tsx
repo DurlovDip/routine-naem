@@ -126,7 +126,7 @@ export function ScheduleSheet({
               rows.map((row, rowIndex) => (
                 <tr key={row.batch.id}>
                   <th className="batch-name">
-                    {batchLines(row.batch.name).map((line, index) => (
+                    {batchLines(row.batch.name, row.batch.id).map((line, index) => (
                       <span key={index}>{line}</span>
                     ))}
                   </th>

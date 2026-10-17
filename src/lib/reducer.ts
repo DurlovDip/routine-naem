@@ -54,6 +54,7 @@ export type Action =
   | { type: "remove-batch"; id: string }
   | { type: "move-batch"; id: string; dir: -1 | 1 }
   | { type: "rename-batch"; id: string; name: string }
+  | { type: "set-batch-student-count"; id: string; count: number }
   | { type: "set-roster"; id: string; roster: string[] }
   | { type: "set-managers"; dayId: string; batchId: string; ids: string[] }
   | { type: "copy-managers"; dayId: string; batchId: string }
@@ -171,30 +172,6 @@ function setSpan(day: DayPlan, batchId: string, sessionId: string, span: number)
   );
   if (ids.length >= 2) merges.push({ batchId, sessionIds: ids });
   return sanitizeDay({ ...day, merges });
-}
-
-function nextBatchName(batches: Batch[]): string {
-  if (batches.length === 0) return "1st";
-  const last = batches[batches.length - 1];
-  const clean = last.name.replace(/\s*Batch$/i, "").trim();
-  const match = clean.match(/^(\d+)(?:st|nd|rd|th)?$/i);
-  if (match) {
-    const num = parseInt(match[1], 10) + 1;
-    const hasOrdinal = /(?:st|nd|rd|th)$/i.test(clean);
-    if (hasOrdinal) {
-      const suffix =
-        num % 10 === 1 && num % 100 !== 11
-          ? "st"
-          : num % 10 === 2 && num % 100 !== 12
-            ? "nd"
-            : num % 10 === 3 && num % 100 !== 13
-              ? "rd"
-              : "th";
-      return `${num}${suffix}`;
-    }
-    return String(num);
-  }
-  return String(batches.length + 1);
 }
 
 export function scheduleReducer(state: AppState, action: Action): AppState {
@@ -315,10 +292,16 @@ export function scheduleReducer(state: AppState, action: Action): AppState {
         return sanitizeDay({ ...day, slots });
       });
     case "add-batch": {
+      const lastNum = state.batches.reduce((max, b) => {
+        const n = parseInt(b.id.replace(/\D/g, ""), 10);
+        return isNaN(n) ? max : Math.max(max, n);
+      }, 0);
+      const nextNum = lastNum > 0 ? lastNum + 1 : state.batches.length + 1;
       const batch: Batch = {
-        id: uid("batch"),
-        name: nextBatchName(state.batches),
-        roster: rosterRange(1, 30),
+        id: `batch-${nextNum}`,
+        name: "", // by default blank
+        numberOfStudents: 40,
+        roster: rosterRange(1, 40),
       };
       return {
         ...state,
@@ -346,6 +329,20 @@ export function scheduleReducer(state: AppState, action: Action): AppState {
           batch.id === action.id ? { ...batch, name: action.name } : batch,
         ),
       };
+    case "set-batch-student-count": {
+      const count = Math.max(1, Math.min(200, action.count));
+      return {
+        ...state,
+        batches: state.batches.map((batch) => {
+          if (batch.id !== action.id) return batch;
+          return {
+            ...batch,
+            numberOfStudents: count,
+            roster: rosterRange(1, count),
+          };
+        }),
+      };
+    }
     case "set-roster":
       return {
         ...state,

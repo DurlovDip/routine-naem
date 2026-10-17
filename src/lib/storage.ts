@@ -3,12 +3,26 @@ import {
   catalogFromModules,
   normalizeModuleNumber,
   normalizeSubNumber,
+  rosterRange,
   sortModuleNumbers,
   sortSubNumbers,
 } from "./text";
-import type { AppState, DayPlan, Footer, HeaderLine } from "./types";
+import type { AppState, Batch, DayPlan, Footer, HeaderLine } from "./types";
 
 const KEY = "acsd-daily-schedule-v1";
+
+function repairBatch(value: unknown): Batch | null {
+  if (!value || typeof value !== "object") return null;
+  const batch = value as Partial<Batch>;
+  if (typeof batch.id !== "string") return null;
+  const count = typeof batch.numberOfStudents === "number" ? batch.numberOfStudents : 40;
+  return {
+    id: batch.id,
+    name: typeof batch.name === "string" ? batch.name : "",
+    numberOfStudents: count,
+    roster: Array.isArray(batch.roster) && batch.roster.length > 0 ? batch.roster : rosterRange(1, count),
+  };
+}
 
 function repairDay(value: unknown): DayPlan | null {
   if (!value || typeof value !== "object") return null;
@@ -51,7 +65,7 @@ export function normalizeState(raw: unknown): AppState | null {
     version: 1,
     header: header.length > 0 ? header : demo.header,
     recapLabel: typeof value.recapLabel === "string" ? value.recapLabel : demo.recapLabel,
-    batches: value.batches,
+    batches: value.batches.map(repairBatch).filter((b): b is Batch => b !== null),
     teachers: Array.isArray(value.teachers) ? value.teachers : [],
     modules,
     moduleNumbers: moduleNumbers ?? (derived.moduleNumbers.length > 0 ? derived.moduleNumbers : demo.moduleNumbers),

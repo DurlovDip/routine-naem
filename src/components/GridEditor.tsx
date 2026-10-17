@@ -481,7 +481,7 @@ function withCurrent(options: string[], current: string): string[] {
 
 function InlineBatchCell({ batch, onDelete }: { batch: Batch; onDelete: () => void }) {
   const { dispatch } = useSchedule();
-  const cleanNumber = cleanBatchNumber(batch.name);
+  const cleanNumber = cleanBatchNumber(batch.name, batch.id);
   const [draft, setDraft] = useState<string | null>(null);
 
   function commit(next: string) {

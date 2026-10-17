@@ -1,7 +1,6 @@
 -- ========================================================================
 -- ROUTINE-NAEM: Seed Data Script
--- Run this in your Supabase SQL Editor to populate Teachers, Modules,
--- Batches, and the Schedule Document with initial data.
+-- Populates Teachers, Modules, Batches, and the Schedule Document.
 -- ========================================================================
 
 -- 1. Ensure Relational Tables Exist
@@ -26,10 +25,13 @@ alter table public.modules enable row level security;
 drop policy if exists "Allow public all modules" on public.modules;
 create policy "Allow public all modules" on public.modules for all using (true) with check (true);
 
-create table if not exists public.batches (
-  id text primary key,
-  name text not null,
-  roster text[] not null default '{}',
+-- Recreate Batches table with integer id, default blank name, and default 40 number_of_students
+drop table if exists public.batches cascade;
+
+create table public.batches (
+  id integer primary key,
+  name text not null default '',
+  number_of_students integer not null default 40,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -104,96 +106,14 @@ insert into public.modules (id, code, title) values
 on conflict (id) do update set code = excluded.code, title = excluded.title, updated_at = now();
 
 
--- 5. Seed Batches Table
-insert into public.batches (id, name, roster) values
-  ('batch-9', '9th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30']),
-  ('batch-10', '10th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30']),
-  ('batch-11', '11th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30']),
-  ('batch-12', '12th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30']),
-  ('batch-13', '13th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30'])
-on conflict (id) do update set name = excluded.name, roster = excluded.roster, updated_at = now();
-
-
--- 6. Seed Schedules Table (initial daily routine state)
-insert into public.schedules (id, data, updated_at) values (
-  'default',
-  '{
-    "version": 1,
-    "recapLabel": "Recap & Day Manager",
-    "autoRotate": true,
-    "showConflicts": true,
-    "activeDayId": "day-07",
-    "header": [
-      { "id": "h1", "style": "normal", "text": "Enhancing Professional Skills of Teachers Scheme" },
-      { "id": "h2", "style": "normal", "text": "Secondary Education Development Program (SEDP)" },
-      { "id": "h3", "style": "normal", "text": "National Academy for Educational Management (NAEM)" },
-      { "id": "h4", "style": "normal", "text": "Secondary and Higher Education Division, Ministry of Education" },
-      { "id": "h5", "style": "title", "text": "Advanced Course on Skill Development" },
-      { "id": "h6", "style": "subtitle", "text": "For Assistant Professors of BCS (General Education) Cadre (09th – 13th Batch)" },
-      { "id": "h7", "style": "normal", "text": "(Duration: 12 October, 2026 – 10 November, 2026)" }
-    ],
-    "footer": {
-      "signature": null,
-      "signatureDate": "17.10.26",
-      "name": "Dr. Litan Kanti Halder",
-      "lines": ["Assistant Director & Course Coordinator", "12th ACSD Training Course"]
-    },
-    "days": [
-      {
-        "id": "day-07",
-        "date": "2026-10-18",
-        "dayNumber": 7,
-        "dayStart": "09:00",
-        "recapMin": 30,
-        "defaultSessionMin": 60,
-        "slots": [
-          { "id": "s1", "kind": "session", "durationMin": 60 },
-          { "id": "break-tea", "kind": "break", "label": "Tea Break", "durationMin": 30 },
-          { "id": "s2", "kind": "session", "durationMin": 60 },
-          { "id": "s3", "kind": "session", "durationMin": 60 },
-          { "id": "break-lunch", "kind": "break", "label": "Prayer & Lunch Break", "durationMin": 60 },
-          { "id": "s4", "kind": "session", "durationMin": 60 },
-          { "id": "s5", "kind": "session", "durationMin": 60 }
-        ],
-        "managers": {
-          "batch-9": ["09", "10"],
-          "batch-10": ["09", "10"],
-          "batch-11": ["09", "10"],
-          "batch-12": ["09", "10"],
-          "batch-13": ["09", "10"]
-        },
-        "merges": [
-          { "batchId": "batch-9", "sessionIds": ["s2", "s3"] },
-          { "batchId": "batch-9", "sessionIds": ["s4", "s5"] }
-        ],
-        "cells": {
-          "batch-9:s1": { "code": "M- 7.04", "note": "(Theory)", "teachers": ["Prof. Asisul"] },
-          "batch-9:s2": { "code": "M- 7.04", "note": "TPP (Theory & Practice)", "teachers": ["Prof. Asisul", "Md. Sazzad Ali", "Muhammad Yeakub Ali"] },
-          "batch-9:s4": { "code": "M- 7.04", "note": "(Practice & Presentation)", "teachers": ["Mst. Arifa Tazrimin", "Md. Jahangir Alom"] },
-          "batch-10:s1": { "code": "M- 1.06", "note": "", "teachers": ["Prof. Rukhshana"] },
-          "batch-10:s2": { "code": "M- 3.05", "note": "", "teachers": ["Prof. Nilufar"] },
-          "batch-10:s3": { "code": "M- 8.08", "note": "", "teachers": ["Ms. Ayesa"] },
-          "batch-10:s4": { "code": "M- 8.10", "note": "", "teachers": ["Mr. S. Mahbub"] },
-          "batch-10:s5": { "code": "M- 5.06", "note": "", "teachers": ["Dr. Rahman"] },
-          "batch-11:s1": { "code": "M- 1.08", "note": "", "teachers": ["Mr. M. Ali"] },
-          "batch-11:s2": { "code": "M- 3.02", "note": "", "teachers": ["Mr. Ariful"] },
-          "batch-11:s3": { "code": "M- 8.07", "note": "", "teachers": ["Dr. Nuruzzaman"] },
-          "batch-11:s4": { "code": "M- 5.06", "note": "", "teachers": ["Dr. Rahman"] },
-          "batch-11:s5": { "code": "M- 6.01", "note": "", "teachers": ["Ms. Zinan"] },
-          "batch-12:s1": { "code": "M- 3.05", "note": "", "teachers": ["Prof. Nilufar"] },
-          "batch-12:s2": { "code": "M- 8.07", "note": "", "teachers": ["Dr. Nuruzzaman"] },
-          "batch-12:s3": { "code": "M- 1.06", "note": "", "teachers": ["Prof. Rukhshana"] },
-          "batch-12:s4": { "code": "M- 8.03", "note": "", "teachers": ["Ms. Arifa"] },
-          "batch-12:s5": { "code": "M- 1.08", "note": "", "teachers": ["Mr. M. Ali"] },
-          "batch-13:s1": { "code": "M- 5.01", "note": "", "teachers": ["Dr. Ayet"] },
-          "batch-13:s2": { "code": "M- 5.06", "note": "", "teachers": ["Dr. Rahman"] },
-          "batch-13:s3": { "code": "M- 6.01", "note": "", "teachers": ["Ms. Zinan"] },
-          "batch-13:s4": { "code": "M- 1.06", "note": "", "teachers": ["Prof. Rukhshana"] },
-          "batch-13:s5": { "code": "M- 3.02", "note": "", "teachers": ["Mr. Ariful"] }
-        }
-      }
-    ]
-  }'::jsonb,
-  now()
-)
-on conflict (id) do update set data = excluded.data, updated_at = now();
+-- 5. Seed Batches Table (id: number, name: default blank, number_of_students: 40)
+insert into public.batches (id, name, number_of_students) values
+  (9, '', 40),
+  (10, '', 40),
+  (11, '', 40),
+  (12, '', 40),
+  (13, '', 40)
+on conflict (id) do update set
+  name = excluded.name,
+  number_of_students = excluded.number_of_students,
+  updated_at = now();
