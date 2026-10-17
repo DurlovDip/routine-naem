@@ -56,6 +56,17 @@ const previewTeachers = [
   "Mst. Arifa Tazrimin",
   "Md. Jahangir Alom",
   "Prof. Rukhshana",
+  "Prof. Nilufar",
+  "Ms. Ayesa",
+  "Mr. S. Mahbub",
+  "Dr. Rahman",
+  "Mr. M. Ali",
+  "Mr. Ariful",
+  "Dr. Nuruzzaman",
+  "Ms. Zinan",
+  "Ms. Arifa",
+  "Dr. Ayet",
+  "Dr. Litan Kanti Halder",
 ];
 
 function seedTeachers(): MockTeacher[] {

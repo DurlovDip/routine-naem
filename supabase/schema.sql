@@ -97,7 +97,8 @@ insert into public.teachers (id, name) values
   ('teacher-13', 'Dr. Nuruzzaman'),
   ('teacher-14', 'Ms. Zinan'),
   ('teacher-15', 'Ms. Arifa'),
-  ('teacher-16', 'Dr. Ayet')
+  ('teacher-16', 'Dr. Ayet'),
+  ('teacher-17', 'Dr. Litan Kanti Halder')
 on conflict (id) do update set name = excluded.name, updated_at = now();
 
 -- 7. Initial Seed: Modules (id: integer, module_number, module_subnumber, module_name)
