@@ -9,6 +9,7 @@ import {
   sortModuleNumbers,
   sortSubNumbers,
 } from "./text";
+import { addDays } from "./time";
 import type { AppState, Batch, DayPlan, Footer, HeaderLine, ModuleEntry, Teacher } from "./types";
 
 const KEY = "acsd-daily-schedule-v1";
@@ -84,8 +85,43 @@ export function normalizeState(raw: unknown): AppState | null {
   if (!raw || typeof raw !== "object") return null;
   const value = raw as Partial<AppState>;
   if (!Array.isArray(value.days) || !Array.isArray(value.batches)) return null;
-  const days = value.days.map(repairDay).filter((day): day is DayPlan => day !== null);
-  if (days.length === 0) return null;
+  const rawDays = value.days.map(repairDay).filter((day): day is DayPlan => day !== null);
+  if (rawDays.length === 0) return null;
+
+  // Deduplicate dates & dayNumbers to prevent duplicate days from being loaded
+  const seenDates = new Set<string>();
+  const seenNumbers = new Set<number>();
+  const days: DayPlan[] = [];
+
+  for (let i = 0; i < rawDays.length; i++) {
+    const day = rawDays[i];
+    let date = day.date;
+    let dayNumber = day.dayNumber;
+
+    if (seenNumbers.has(dayNumber) || dayNumber <= 0) {
+      let nextNum = (days[i - 1]?.dayNumber ?? 0) + 1;
+      while (seenNumbers.has(nextNum)) {
+        nextNum += 1;
+      }
+      dayNumber = nextNum;
+    }
+    seenNumbers.add(dayNumber);
+
+    if (seenDates.has(date)) {
+      let nextDate = addDays(days[i - 1]?.date ?? date, 1);
+      while (seenDates.has(nextDate)) {
+        nextDate = addDays(nextDate, 1);
+      }
+      date = nextDate;
+    }
+    seenDates.add(date);
+
+    days.push({
+      ...day,
+      date,
+      dayNumber,
+    });
+  }
   const demo = createDemoState();
   const header = Array.isArray(value.header) ? (value.header as HeaderLine[]) : demo.header;
 

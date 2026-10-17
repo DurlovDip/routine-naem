@@ -10,7 +10,7 @@ import { Button, ConfirmDialog, Section } from "./components/ui";
 import { downloadScheduleDocx } from "./lib/docx";
 import { roleLabel } from "./lib/roles";
 import { joinWithAnd, rotateIds } from "./lib/text";
-import { formatDayNumber, formatSlashDate, weekdayName } from "./lib/time";
+import { addDays, formatDayNumber, formatSlashDate, weekdayName } from "./lib/time";
 import { ScheduleProvider, useSchedule } from "./state";
 
 type Mode = "edit" | "preview";
@@ -25,6 +25,15 @@ function Shell() {
   const role = auth.session?.role;
   const canEdit = !auth.required || role === "super_admin" || role === "coordinator" || role === "temp_coordinator";
   const canManageCatalog = !auth.required || role === "super_admin";
+
+  const nextDate = addDays(day.date, 1);
+  const nextDayNum = day.dayNumber + 1;
+  const nextDayExists = state.days.some(
+    (d) => d.id !== day.id && (d.date === nextDate || d.dayNumber === nextDayNum),
+  );
+  const maxDayNum = Math.max(...state.days.map((d) => d.dayNumber), 0);
+  const isDuplicateDate = state.days.some((d) => d.id !== day.id && d.date === day.date);
+  const isDuplicateDayNum = state.days.some((d) => d.id !== day.id && d.dayNumber === day.dayNumber);
   const [mode, setMode] = useState<Mode>(() => readHash());
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -134,7 +143,7 @@ function Shell() {
                 <label>
                   <span className="field-label">Date</span>
                   <input
-                    className="field"
+                    className={`field ${isDuplicateDate ? "border-red-500 bg-red-50/50" : ""}`}
                     type="date"
                     value={day.date}
                     onChange={(event) =>
@@ -142,11 +151,16 @@ function Shell() {
                     }
                   />
                   <span className="hint">{weekdayName(day.date)}</span>
+                  {isDuplicateDate && (
+                    <span className="text-xs text-red-600 block mt-1 font-semibold">
+                      ⚠️ Date is already scheduled on another day!
+                    </span>
+                  )}
                 </label>
                 <label>
                   <span className="field-label">Day number</span>
                   <input
-                    className="field"
+                    className={`field ${isDuplicateDayNum ? "border-red-500 bg-red-50/50" : ""}`}
                     type="number"
                     min={1}
                     max={999}
@@ -159,16 +173,37 @@ function Shell() {
                       })
                     }
                   />
+                  {isDuplicateDayNum && (
+                    <span className="text-xs text-red-600 block mt-1 font-semibold">
+                      ⚠️ Day number {day.dayNumber} is already used!
+                    </span>
+                  )}
                 </label>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button
                   tone="primary"
+                  disabled={nextDayExists}
+                  title={
+                    nextDayExists
+                      ? `Day ${nextDayNum < 10 ? `0${nextDayNum}` : nextDayNum} (${formatSlashDate(nextDate)}) already exists`
+                      : undefined
+                  }
                   onClick={() => dispatch({ type: "duplicate-day", dayId: day.id })}
                 >
                   <CopyPlus size={15} /> Duplicate to next day
                 </Button>
-                <Button onClick={() => dispatch({ type: "new-day", dayId: day.id })}>Blank next day</Button>
+                <Button
+                  disabled={nextDayExists}
+                  title={
+                    nextDayExists
+                      ? `Day ${nextDayNum < 10 ? `0${nextDayNum}` : nextDayNum} (${formatSlashDate(nextDate)}) already exists`
+                      : undefined
+                  }
+                  onClick={() => dispatch({ type: "new-day", dayId: day.id })}
+                >
+                  Blank next day
+                </Button>
                 <Button
                   tone="danger"
                   disabled={state.days.length <= 1}
@@ -177,6 +212,19 @@ function Shell() {
                   <Trash2 size={15} /> Delete day
                 </Button>
               </div>
+              {nextDayExists && (
+                <div className="mt-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded p-2 flex flex-wrap items-center justify-between gap-2">
+                  <span>
+                    Day {nextDayNum < 10 ? `0${nextDayNum}` : nextDayNum} ({formatSlashDate(nextDate)}) already exists in routine.
+                  </span>
+                  <Button
+                    tone="quiet"
+                    onClick={() => dispatch({ type: "duplicate-day-to-end", dayId: day.id })}
+                  >
+                    <CopyPlus size={13} /> Duplicate as Day {maxDayNum + 1 < 10 ? `0${maxDayNum + 1}` : maxDayNum + 1}
+                  </Button>
+                </div>
+              )}
               <label className="switch mt-3">
                 <input
                   type="checkbox"

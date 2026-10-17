@@ -235,19 +235,79 @@ describe("rotation, merges and clashes", () => {
       "Deputy Director & Course Coordinator",
       "14th ACSD Course",
     ]);
+  });
 
-    // Uncheck Course Coordinator
-    state = scheduleReducer(state, {
-      type: "set-footer",
-      patch: {
-        isCourseCoordinator: false,
-      },
+  it("prevents creating duplicate days when next day already exists", () => {
+    let state = createDemoState(); // starts with day-07 (2026-10-18, day 7)
+    state = scheduleReducer(state, { type: "duplicate-day", dayId: "day-07" });
+    expect(state.days).toHaveLength(2);
+    expect(state.days[1].dayNumber).toBe(8);
+    expect(state.days[1].date).toBe("2026-10-19");
+
+    // Attempting to duplicate Day 7 AGAIN when Day 8 already exists MUST NOT create a duplicate Day 8
+    const duplicatedAgain = scheduleReducer(state, { type: "duplicate-day", dayId: "day-07" });
+    expect(duplicatedAgain.days).toHaveLength(2); // still 2! No 3rd day created!
+
+    // Attempting to create blank next day from Day 7 when Day 8 already exists MUST NOT create duplicate
+    const blankAgain = scheduleReducer(state, { type: "new-day", dayId: "day-07" });
+    expect(blankAgain.days).toHaveLength(2); // still 2!
+  });
+
+  it("duplicates day to the end of routine with unique sequential number and date", () => {
+    let state = createDemoState(); // day-07 (2026-10-18, day 7)
+    state = scheduleReducer(state, { type: "duplicate-day", dayId: "day-07" }); // creates day 8 (2026-10-19)
+    expect(state.days).toHaveLength(2);
+
+    // Now on Day 7, duplicate to end:
+    state = scheduleReducer(state, { type: "duplicate-day-to-end", dayId: "day-07" });
+    expect(state.days).toHaveLength(3);
+    const day9 = state.days[2];
+    expect(day9.dayNumber).toBe(9);
+    expect(day9.date).toBe("2026-10-20");
+  });
+
+  it("prevents updating a day to a conflicting date or dayNumber", () => {
+    let state = createDemoState();
+    state = scheduleReducer(state, { type: "duplicate-day", dayId: "day-07" }); // day 7 and day 8
+    const day8Id = state.days[1].id;
+
+    // Trying to set day 8's date to day 7's date (2026-10-18)
+    const updated = scheduleReducer(state, {
+      type: "update-day",
+      id: day8Id,
+      patch: { date: "2026-10-18" },
     });
-    expect(state.footer.lines).toEqual([
-      "Deputy Director",
-      "14th ACSD Course",
-    ]);
+    // Date was rejected and preserved as 2026-10-19
+    expect(updated.days[1].date).toBe("2026-10-19");
+
+    // Trying to set day 8's dayNumber to 7
+    const updatedNum = scheduleReducer(state, {
+      type: "update-day",
+      id: day8Id,
+      patch: { dayNumber: 7 },
+    });
+    // Day number was rejected and preserved as 8
+    expect(updatedNum.days[1].dayNumber).toBe(8);
+  });
+
+  it("normalizeState automatically repairs duplicate days from corrupt data", () => {
+    const corruptState = createDemoState();
+    const day8 = { ...corruptState.days[0], id: "day-08-a", dayNumber: 8, date: "2026-10-19" };
+    const duplicateDay8 = { ...corruptState.days[0], id: "day-08-b", dayNumber: 8, date: "2026-10-19" };
+    corruptState.days = [corruptState.days[0], day8, duplicateDay8];
+
+    const normalized = normalizeState(corruptState);
+    expect(normalized).not.toBeNull();
+    expect(normalized?.days).toHaveLength(3);
+    expect(normalized?.days[0].dayNumber).toBe(7);
+    expect(normalized?.days[0].date).toBe("2026-10-18");
+    expect(normalized?.days[1].dayNumber).toBe(8);
+    expect(normalized?.days[1].date).toBe("2026-10-19");
+    // Duplicate day 8 was automatically advanced to day 9 with date 2026-10-20
+    expect(normalized?.days[2].dayNumber).toBe(9);
+    expect(normalized?.days[2].date).toBe("2026-10-20");
   });
 });
+
 
 

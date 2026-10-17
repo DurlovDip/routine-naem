@@ -72,6 +72,7 @@ export type Action =
   | { type: "add-sub-number"; value: string }
   | { type: "remove-sub-number"; value: string }
   | { type: "duplicate-day"; dayId: string }
+  | { type: "duplicate-day-to-end"; dayId: string }
   | { type: "new-day"; dayId: string }
   | { type: "delete-day"; dayId: string };
 
@@ -247,10 +248,20 @@ export function scheduleReducer(state: AppState, action: Action): AppState {
     case "update-day":
       return withDay(state, action.id, (day) => {
         const patch = { ...action.patch };
-        if (patch.date !== undefined && !isIsoDate(patch.date)) delete patch.date;
+        if (
+          patch.date !== undefined &&
+          (!isIsoDate(patch.date) || state.days.some((d) => d.id !== action.id && d.date === patch.date))
+        ) {
+          delete patch.date;
+        }
         if (patch.dayStart !== undefined && !isClock(patch.dayStart)) delete patch.dayStart;
         if (patch.dayNumber !== undefined) {
-          patch.dayNumber = Math.min(999, Math.max(1, Math.trunc(patch.dayNumber)));
+          const num = Math.min(999, Math.max(1, Math.trunc(patch.dayNumber)));
+          if (state.days.some((d) => d.id !== action.id && d.dayNumber === num)) {
+            delete patch.dayNumber;
+          } else {
+            patch.dayNumber = num;
+          }
         }
         if (patch.recapMin !== undefined) patch.recapMin = clampDuration(patch.recapMin);
         if (patch.defaultSessionMin !== undefined) {
@@ -485,11 +496,39 @@ export function scheduleReducer(state: AppState, action: Action): AppState {
     case "duplicate-day": {
       const day = state.days.find((item) => item.id === action.dayId);
       if (!day) return state;
+      const targetDate = addDays(day.date, 1);
+      const targetDayNum = day.dayNumber + 1;
+      if (state.days.some((d) => d.date === targetDate || d.dayNumber === targetDayNum)) {
+        return state;
+      }
       return insertDay(state, day.id, cloneDay(day, state.batches, state.autoRotate, false));
+    }
+    case "duplicate-day-to-end": {
+      const day = state.days.find((item) => item.id === action.dayId);
+      if (!day) return state;
+      const maxDayNum = Math.max(...state.days.map((d) => d.dayNumber), 0);
+      const maxDate = state.days.reduce((max, d) => (d.date > max ? d.date : max), day.date);
+      let nextDate = addDays(maxDate, 1);
+      while (state.days.some((d) => d.date === nextDate)) {
+        nextDate = addDays(nextDate, 1);
+      }
+      const newDay = cloneDay(day, state.batches, state.autoRotate, false);
+      newDay.date = nextDate;
+      newDay.dayNumber = maxDayNum + 1;
+      return {
+        ...state,
+        days: [...state.days, newDay],
+        activeDayId: newDay.id,
+      };
     }
     case "new-day": {
       const day = state.days.find((item) => item.id === action.dayId);
       if (!day) return state;
+      const targetDate = addDays(day.date, 1);
+      const targetDayNum = day.dayNumber + 1;
+      if (state.days.some((d) => d.date === targetDate || d.dayNumber === targetDayNum)) {
+        return state;
+      }
       return insertDay(state, day.id, cloneDay(day, state.batches, state.autoRotate, true));
     }
     case "delete-day": {
