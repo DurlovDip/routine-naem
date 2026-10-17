@@ -1,6 +1,7 @@
 -- ========================================================================
--- INCREMENTAL MIGRATION: Add Teachers, Modules & Batches
--- Run this if you already executed the previous schema.sql for schedules.
+-- INCREMENTAL MIGRATION: Add Teachers, Modules & Batches + Seed Data
+-- Run this in your Supabase SQL Editor to create the relational tables
+-- and populate them with the initial teacher, module, and batch data.
 -- ========================================================================
 
 -- 1. Teachers Table
@@ -41,7 +42,7 @@ alter table public.batches enable row level security;
 drop policy if exists "Allow public all batches" on public.batches;
 create policy "Allow public all batches" on public.batches for all using (true) with check (true);
 
--- 4. Enable Realtime for the new tables safely
+-- 4. Enable Realtime Replication
 do $$
 begin
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'teachers') then
@@ -54,3 +55,50 @@ begin
     alter publication supabase_realtime add table public.batches;
   end if;
 end $$;
+
+-- 5. Seed Teachers
+insert into public.teachers (id, name) values
+  ('teacher-1', 'Prof. Asisul'),
+  ('teacher-2', 'Md. Sazzad Ali'),
+  ('teacher-3', 'Muhammad Yeakub Ali'),
+  ('teacher-4', 'Mst. Arifa Tazrimin'),
+  ('teacher-5', 'Md. Jahangir Alom'),
+  ('teacher-6', 'Prof. Rukhshana'),
+  ('teacher-7', 'Prof. Nilufar'),
+  ('teacher-8', 'Ms. Ayesa'),
+  ('teacher-9', 'Mr. S. Mahbub'),
+  ('teacher-10', 'Dr. Rahman'),
+  ('teacher-11', 'Mr. M. Ali'),
+  ('teacher-12', 'Mr. Ariful'),
+  ('teacher-13', 'Dr. Nuruzzaman'),
+  ('teacher-14', 'Ms. Zinan'),
+  ('teacher-15', 'Ms. Arifa'),
+  ('teacher-16', 'Dr. Ayet')
+on conflict (id) do update set name = excluded.name, updated_at = now();
+
+-- 6. Seed Modules
+insert into public.modules (id, code, title) values
+  ('module-1', 'M- 7.04', '(Theory)'),
+  ('module-2', 'M- 7.04', 'TPP (Theory & Practice)'),
+  ('module-3', 'M- 7.04', '(Practice & Presentation)'),
+  ('module-4', 'M- 1.06', ''),
+  ('module-5', 'M- 1.08', ''),
+  ('module-6', 'M- 3.02', ''),
+  ('module-7', 'M- 3.05', ''),
+  ('module-8', 'M- 5.01', ''),
+  ('module-9', 'M- 5.06', ''),
+  ('module-10', 'M- 6.01', ''),
+  ('module-11', 'M- 8.03', ''),
+  ('module-12', 'M- 8.07', ''),
+  ('module-13', 'M- 8.08', ''),
+  ('module-14', 'M- 8.10', '')
+on conflict (id) do update set code = excluded.code, title = excluded.title, updated_at = now();
+
+-- 7. Seed Batches
+insert into public.batches (id, name, roster) values
+  ('batch-9', '9th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30']),
+  ('batch-10', '10th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30']),
+  ('batch-11', '11th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30']),
+  ('batch-12', '12th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30']),
+  ('batch-13', '13th Batch', array['01','02','03','04','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30'])
+on conflict (id) do update set name = excluded.name, roster = excluded.roster, updated_at = now();

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Packer } from "docx";
 import JSZip from "jszip";
-import { createDemoState } from "../src/lib/demo";
+import { createDemoState } from "./mockData";
 import { buildScheduleDocument } from "../src/lib/docx";
 import { normalizeState } from "../src/lib/storage";
 import { scheduleReducer } from "../src/lib/reducer";
