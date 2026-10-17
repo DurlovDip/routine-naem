@@ -261,6 +261,10 @@ export function SyncStatusButton() {
     );
   }
 
+  if (syncStatus === "unconfigured") {
+    return null;
+  }
+
   return (
     <>
       <button
@@ -274,14 +278,12 @@ export function SyncStatusButton() {
         {syncStatus === "saving" && <RefreshCw size={14} className="animate-spin text-amber-600" />}
         {syncStatus === "offline" && <CloudOff size={15} className="text-stone-500" />}
         {syncStatus === "error" && <AlertCircle size={15} className="text-rose-600" />}
-        {syncStatus === "unconfigured" && <Cloud size={15} className="text-stone-400" />}
 
         <span className="sync-btn-label">
           {syncStatus === "connected" && "Cloud Synced"}
           {syncStatus === "saving" && "Saving..."}
           {syncStatus === "offline" && "Offline"}
           {syncStatus === "error" && "Sync Error"}
-          {syncStatus === "unconfigured" && "Connect Supabase"}
         </span>
       </button>
 

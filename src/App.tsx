@@ -11,7 +11,6 @@ import { downloadScheduleDocx } from "./lib/docx";
 import { roleLabel } from "./lib/roles";
 import { joinWithAnd, rotateIds } from "./lib/text";
 import { formatDayNumber, formatSlashDate, weekdayName } from "./lib/time";
-import { SyncStatusButton } from "./components/SyncStatus";
 import { ScheduleProvider, useSchedule } from "./state";
 
 type Mode = "edit" | "preview";
@@ -77,7 +76,6 @@ function Shell() {
             <div className="role-chip">View only</div>
           )}
           <div className="toolbar-actions">
-            {canEdit ? <SyncStatusButton /> : null}
             <Button
               tone="primary"
               onClick={() => {
