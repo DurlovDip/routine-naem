@@ -44,11 +44,26 @@ export const BATCHES_TABLE = "batches";
 export async function loadRemoteSchedule(): Promise<{ state: AppState | null; error: string | null }> {
   if (!supabase) return { state: null, error: null };
   try {
-    const [scheduleRes, teachersRes, modulesRes, batchesRes] = await Promise.all([
-      supabase.from(SCHEDULE_TABLE).select("data").eq("id", SCHEDULE_ROW_ID).maybeSingle(),
-      supabase.from(TEACHERS_TABLE).select("id, name").order("name"),
-      supabase.from(MODULES_TABLE).select("id, module_number, module_subnumber, module_name").order("id"),
-      supabase.from(BATCHES_TABLE).select("id, name, number_of_students").order("id"),
+    const schedulePromise = supabase.from(SCHEDULE_TABLE).select("data").eq("id", SCHEDULE_ROW_ID).maybeSingle();
+    const modulesPromise = supabase.from(MODULES_TABLE).select("id, module_number, module_subnumber, module_name").order("id");
+    const batchesPromise = supabase.from(BATCHES_TABLE).select("id, name, number_of_students").order("id");
+
+    let teachersRes: {
+      data: Array<{ id: string; name: string; designation?: string }> | null;
+      error: { message: string } | null;
+    } = await supabase.from(TEACHERS_TABLE).select("id, name, designation").order("name");
+    if (teachersRes.error && teachersRes.error.message.includes("designation")) {
+      const fallback = await supabase.from(TEACHERS_TABLE).select("id, name").order("name");
+      teachersRes = {
+        data: fallback.data ? (fallback.data as Array<{ id: string; name: string }>).map((r) => ({ id: r.id, name: r.name, designation: "" })) : null,
+        error: fallback.error ? { message: fallback.error.message } : null,
+      };
+    }
+
+    const [scheduleRes, modulesRes, batchesRes] = await Promise.all([
+      schedulePromise,
+      modulesPromise,
+      batchesPromise,
     ]);
 
     const failure = scheduleRes.error || teachersRes.error || modulesRes.error || batchesRes.error;
@@ -75,9 +90,10 @@ export async function loadRemoteSchedule(): Promise<{ state: AppState | null; er
 
     // Merge relational teachers
     if (teachersRes.data && teachersRes.data.length > 0) {
-      baseState.teachers = teachersRes.data.map((row: { id: string; name: string }): Teacher => ({
+      baseState.teachers = teachersRes.data.map((row: { id: string; name: string; designation?: string }): Teacher => ({
         id: row.id,
         name: row.name,
+        designation: row.designation || "",
       }));
     }
 
@@ -148,9 +164,18 @@ async function syncTeachers(teachers: Teacher[], timestamp: string) {
     const rows = teachers.map((t) => ({
       id: t.id,
       name: t.name,
+      designation: t.designation || "",
       updated_at: timestamp,
     }));
-    await supabase.from(TEACHERS_TABLE).upsert(rows, { onConflict: "id" });
+    const { error: upsertErr } = await supabase.from(TEACHERS_TABLE).upsert(rows, { onConflict: "id" });
+    if (upsertErr && upsertErr.message.includes("designation")) {
+      const fallbackRows = teachers.map((t) => ({
+        id: t.id,
+        name: t.name,
+        updated_at: timestamp,
+      }));
+      await supabase.from(TEACHERS_TABLE).upsert(fallbackRows, { onConflict: "id" });
+    }
   }
 
   const { data: remoteRows, error } = await supabase.from(TEACHERS_TABLE).select("id");
@@ -393,8 +418,9 @@ export async function restoreRecordFromBackup(
       const name = String(d.name || "");
       if (!id || !name) return { success: false, message: "Missing teacher id or name in backup." };
 
+      const designation = String(d.designation || "");
       const { error } = await supabase.from(TEACHERS_TABLE).upsert(
-        { id, name, updated_at: now },
+        { id, name, ...(designation ? { designation } : {}), updated_at: now },
         { onConflict: "id" },
       );
       if (error) throw error;

@@ -4,7 +4,7 @@ import { buildTimeline, sessionSlots } from "../lib/schedule";
 import { readSignatureFile } from "../lib/storage";
 import { cleanBatchNumber, joinWithAnd, parseRoster, rosterRange } from "../lib/text";
 import { formatClock, formatRange, formatSignatureDate, toIsoDate } from "../lib/time";
-import type { Batch, DayPlan, HeaderStyle } from "../lib/types";
+import { STANDARD_DESIGNATIONS, type Batch, type DayPlan, type HeaderStyle } from "../lib/types";
 import { useSchedule } from "../state";
 import { Button, Field } from "./ui";
 
@@ -423,6 +423,7 @@ export function HeaderEditor() {
 export function LibraryEditor() {
   const { state, dispatch } = useSchedule();
   const [teacher, setTeacher] = useState("");
+  const [teacherDesignation, setTeacherDesignation] = useState<string>("Assistant Director");
   const [moduleNumber, setModuleNumber] = useState("");
   const [subNumber, setSubNumber] = useState("");
 
@@ -430,17 +431,42 @@ export function LibraryEditor() {
     <div className="settings-panel">
       <div>
         <div className="field-label">Teachers</div>
-        <ul className="settings-list">
+        <p className="hint mb-2">Teacher names and official designations.</p>
+        <ul className="settings-list space-y-2">
           {state.teachers.map((item) => (
-            <li key={item.id} className="settings-item">
+            <li key={item.id} className="settings-item flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
               <input
-                className="field"
+                className="field flex-1"
                 aria-label={`Teacher ${item.name}`}
+                placeholder="Teacher name"
                 value={item.name}
                 onChange={(event) =>
                   dispatch({ type: "rename-teacher", id: item.id, name: event.target.value })
                 }
               />
+              <select
+                className="field sm:w-48 text-xs"
+                aria-label={`Designation for ${item.name}`}
+                value={item.designation || ""}
+                onChange={(event) =>
+                  dispatch({
+                    type: "set-teacher-designation",
+                    id: item.id,
+                    designation: event.target.value,
+                  })
+                }
+              >
+                <option value="">(No Designation)</option>
+                {STANDARD_DESIGNATIONS.map((des) => (
+                  <option key={des} value={des}>
+                    {des}
+                  </option>
+                ))}
+                {item.designation &&
+                  !STANDARD_DESIGNATIONS.includes(item.designation as any) && (
+                    <option value={item.designation}>{item.designation}</option>
+                  )}
+              </select>
               <IconButton
                 label={`Remove ${item.name}`}
                 onClick={() => dispatch({ type: "remove-teacher", id: item.id })}
@@ -451,19 +477,37 @@ export function LibraryEditor() {
           ))}
         </ul>
         <form
-          className="mt-2 flex gap-2"
+          className="mt-3 flex flex-col sm:flex-row gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            dispatch({ type: "add-teacher", name: teacher });
+            if (!teacher.trim()) return;
+            dispatch({
+              type: "add-teacher",
+              name: teacher,
+              designation: teacherDesignation,
+            });
             setTeacher("");
           }}
         >
           <input
-            className="field"
-            placeholder="Teacher name"
+            className="field flex-1"
+            placeholder="New teacher name"
             value={teacher}
             onChange={(event) => setTeacher(event.target.value)}
           />
+          <select
+            className="field sm:w-48 text-xs"
+            aria-label="New teacher designation"
+            value={teacherDesignation}
+            onChange={(event) => setTeacherDesignation(event.target.value)}
+          >
+            <option value="">(No Designation)</option>
+            {STANDARD_DESIGNATIONS.map((des) => (
+              <option key={des} value={des}>
+                {des}
+              </option>
+            ))}
+          </select>
           <Button type="submit" tone="primary">
             Add
           </Button>
@@ -547,6 +591,18 @@ export function FooterEditor() {
   const { state, dispatch } = useSchedule();
   const footer = state.footer;
 
+  const designation = footer.designation ?? "Assistant Director";
+  const isCourseCoordinator = footer.isCourseCoordinator ?? true;
+  const courseName = footer.courseName ?? (footer.lines[1] ?? "");
+
+  const resolvedDesignationLine = designation.trim()
+    ? isCourseCoordinator
+      ? `${designation.trim()} & Course Coordinator`
+      : designation.trim()
+    : isCourseCoordinator
+      ? "Course Coordinator"
+      : "";
+
   async function onFile(file: File | undefined) {
     if (!file) return;
     const signature = await readSignatureFile(file);
@@ -628,34 +684,66 @@ export function FooterEditor() {
       <Field label="Name">
         <input
           className="field"
+          placeholder="Signee full name"
           value={footer.name}
           onChange={(event) => dispatch({ type: "set-footer", patch: { name: event.target.value } })}
         />
       </Field>
-      <div>
-        <div className="field-label">Designation lines</div>
-        {footer.lines.map((line, index) => (
-          <div key={index} className="mb-2 flex gap-2">
-            <input
-              className="field"
-              aria-label={`Designation line ${index + 1}`}
-              value={line}
-              onChange={(event) =>
-                dispatch({ type: "set-footer-line", index, text: event.target.value })
-              }
-            />
-            <IconButton
-              label="Remove designation line"
-              onClick={() => dispatch({ type: "remove-footer-line", index })}
-            >
-              <Trash2 size={14} />
-            </IconButton>
-          </div>
-        ))}
-        <Button tone="ghost" onClick={() => dispatch({ type: "add-footer-line" })}>
-          <Plus size={15} /> Add line
-        </Button>
+      <Field label="Designation">
+        <select
+          className="field"
+          aria-label="Designation dropdown"
+          value={designation}
+          onChange={(event) =>
+            dispatch({
+              type: "set-footer",
+              patch: { designation: event.target.value },
+            })
+          }
+        >
+          {STANDARD_DESIGNATIONS.map((des) => (
+            <option key={des} value={des}>
+              {des}
+            </option>
+          ))}
+          {designation && !STANDARD_DESIGNATIONS.includes(designation as any) && (
+            <option value={designation}>{designation}</option>
+          )}
+        </select>
+      </Field>
+      <div className="rounded-md border border-[#e4ded5] bg-[#faf8f4] p-3 space-y-1">
+        <label className="flex items-center gap-2 cursor-pointer select-none text-sm font-semibold text-stone-800">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-stone-300 text-stone-800 focus:ring-stone-500"
+            checked={isCourseCoordinator}
+            onChange={(event) =>
+              dispatch({
+                type: "set-footer",
+                patch: { isCourseCoordinator: event.target.checked },
+              })
+            }
+          />
+          <span>Course Coordinator</span>
+          <span className="text-xs font-normal text-stone-500">(appends &amp; Course Coordinator)</span>
+        </label>
+        <div className="text-xs text-stone-600 pl-6">
+          Prints as: <span className="font-semibold text-stone-800">{resolvedDesignationLine || "(empty)"}</span>
+        </div>
       </div>
+      <Field label="Course name" hint="Printed as the last line in the bottom right corner">
+        <input
+          className="field"
+          placeholder="e.g. 12th ACSD Training Course"
+          value={courseName}
+          onChange={(event) =>
+            dispatch({
+              type: "set-footer",
+              patch: { courseName: event.target.value },
+            })
+          }
+        />
+      </Field>
     </div>
   );
 }

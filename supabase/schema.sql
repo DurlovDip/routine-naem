@@ -7,13 +7,16 @@
 create table if not exists public.teachers (
   id text primary key,
   name text not null,
+  designation text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
+alter table public.teachers add column if not exists designation text not null default '';
 alter table public.teachers enable row level security;
 drop policy if exists "Allow public all teachers" on public.teachers;
 create policy "Allow public all teachers" on public.teachers for all using (true) with check (true);
+
 
 -- 2. Modules Table
 -- id is integer, module_number, module_subnumber, module_name (blank initially)

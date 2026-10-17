@@ -197,5 +197,57 @@ describe("rotation, merges and clashes", () => {
     expect(formatSignatureDate("17.10.26")).toBe("17.10.26");
     expect(formatSignatureDate("2026-05-09")).toBe("09.05.26");
   });
+
+  it("handles teacher designation assignment and addition", () => {
+    let state = createDemoState();
+    const t0 = state.teachers[0];
+    state = scheduleReducer(state, {
+      type: "set-teacher-designation",
+      id: t0.id,
+      designation: "Deputy Director",
+    });
+    expect(state.teachers.find((t) => t.id === t0.id)?.designation).toBe("Deputy Director");
+
+    state = scheduleReducer(state, {
+      type: "add-teacher",
+      name: "Dr. New Professor",
+      designation: "Professor",
+    });
+    const added = state.teachers.find((t) => t.name === "Dr. New Professor");
+    expect(added).toBeDefined();
+    expect(added?.designation).toBe("Professor");
+  });
+
+  it("syncs footer lines with designation, course coordinator checkbox, and course name", () => {
+    let state = createDemoState();
+    state = scheduleReducer(state, {
+      type: "set-footer",
+      patch: {
+        designation: "Deputy Director",
+        isCourseCoordinator: true,
+        courseName: "14th ACSD Course",
+      },
+    });
+    expect(state.footer.designation).toBe("Deputy Director");
+    expect(state.footer.isCourseCoordinator).toBe(true);
+    expect(state.footer.courseName).toBe("14th ACSD Course");
+    expect(state.footer.lines).toEqual([
+      "Deputy Director & Course Coordinator",
+      "14th ACSD Course",
+    ]);
+
+    // Uncheck Course Coordinator
+    state = scheduleReducer(state, {
+      type: "set-footer",
+      patch: {
+        isCourseCoordinator: false,
+      },
+    });
+    expect(state.footer.lines).toEqual([
+      "Deputy Director",
+      "14th ACSD Course",
+    ]);
+  });
 });
+
 

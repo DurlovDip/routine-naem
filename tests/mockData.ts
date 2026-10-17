@@ -140,6 +140,9 @@ export function createDemoState(): AppState {
       signature: DEMO_SIGNATURE,
       signatureDate: "17.10.26",
       name: "Dr. Litan Kanti Halder",
+      designation: "Assistant Director",
+      isCourseCoordinator: true,
+      courseName: "12th ACSD Training Course",
       lines: ["Assistant Director & Course Coordinator", "12th ACSD Training Course"],
     },
     days: [

@@ -9,7 +9,7 @@ import {
   sortModuleNumbers,
   sortSubNumbers,
 } from "./text";
-import type { AppState, Batch, DayPlan, Footer, HeaderLine, ModuleEntry } from "./types";
+import type { AppState, Batch, DayPlan, Footer, HeaderLine, ModuleEntry, Teacher } from "./types";
 
 const KEY = "acsd-daily-schedule-v1";
 
@@ -69,6 +69,17 @@ function repairDay(value: unknown): DayPlan | null {
   };
 }
 
+function repairTeacher(value: unknown): Teacher | null {
+  if (!value || typeof value !== "object") return null;
+  const t = value as Partial<Teacher>;
+  if (typeof t.id !== "string" || typeof t.name !== "string") return null;
+  return {
+    id: t.id,
+    name: t.name,
+    designation: typeof t.designation === "string" ? t.designation : "",
+  };
+}
+
 export function normalizeState(raw: unknown): AppState | null {
   if (!raw || typeof raw !== "object") return null;
   const value = raw as Partial<AppState>;
@@ -77,10 +88,45 @@ export function normalizeState(raw: unknown): AppState | null {
   if (days.length === 0) return null;
   const demo = createDemoState();
   const header = Array.isArray(value.header) ? (value.header as HeaderLine[]) : demo.header;
-  const footer = {
+
+  const rawFooter = value.footer && typeof value.footer === "object" ? (value.footer as Partial<Footer>) : {};
+  let footerDesignation = typeof rawFooter.designation === "string" ? rawFooter.designation : "";
+  let isCourseCoordinator =
+    typeof rawFooter.isCourseCoordinator === "boolean" ? rawFooter.isCourseCoordinator : true;
+  let courseName = typeof rawFooter.courseName === "string" ? rawFooter.courseName : "";
+
+  if (!footerDesignation && Array.isArray(rawFooter.lines) && rawFooter.lines.length > 0) {
+    const l1 = rawFooter.lines[0] || "";
+    if (l1.includes("& Course Coordinator")) {
+      footerDesignation = l1.replace("& Course Coordinator", "").trim();
+      isCourseCoordinator = true;
+    } else if (l1.includes("Course Coordinator")) {
+      footerDesignation = l1.replace("Course Coordinator", "").trim();
+      isCourseCoordinator = true;
+    } else {
+      footerDesignation = l1.trim();
+      isCourseCoordinator = false;
+    }
+    if (!courseName && rawFooter.lines.length > 1) {
+      courseName = rawFooter.lines[1] || "";
+    }
+  }
+
+  const line1 = footerDesignation
+    ? (isCourseCoordinator ? `${footerDesignation} & Course Coordinator` : footerDesignation)
+    : (isCourseCoordinator ? "Course Coordinator" : "");
+  const line2 = courseName;
+  const lines = [line1, line2].filter(Boolean);
+
+  const footer: Footer = {
     ...demo.footer,
-    ...(value.footer && typeof value.footer === "object" ? (value.footer as Partial<Footer>) : {}),
+    ...rawFooter,
+    designation: footerDesignation || "Assistant Director",
+    isCourseCoordinator,
+    courseName,
+    lines: lines.length > 0 ? lines : (rawFooter.lines && rawFooter.lines.length > 0 ? rawFooter.lines : demo.footer.lines),
   };
+
   const active = days.some((day) => day.id === value.activeDayId) ? value.activeDayId! : days[0].id;
   const modules = Array.isArray(value.modules)
     ? value.modules.map(repairModule).filter((m): m is ModuleEntry => m !== null)
@@ -93,7 +139,9 @@ export function normalizeState(raw: unknown): AppState | null {
     header: header.length > 0 ? header : demo.header,
     recapLabel: typeof value.recapLabel === "string" ? value.recapLabel : demo.recapLabel,
     batches: value.batches.map(repairBatch).filter((b): b is Batch => b !== null),
-    teachers: Array.isArray(value.teachers) ? value.teachers : [],
+    teachers: Array.isArray(value.teachers)
+      ? value.teachers.map(repairTeacher).filter((t): t is Teacher => t !== null)
+      : [],
     modules,
     moduleNumbers: moduleNumbers ?? (derived.moduleNumbers.length > 0 ? derived.moduleNumbers : demo.moduleNumbers),
     subNumbers: subNumbers ?? (derived.subNumbers.length > 0 ? derived.subNumbers : demo.subNumbers),

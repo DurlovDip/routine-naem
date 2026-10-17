@@ -6,9 +6,27 @@ export type HeaderLine = {
   style: HeaderStyle;
 };
 
+export const STANDARD_DESIGNATIONS = [
+  "Assistant Director",
+  "Deputy Director",
+  "Director",
+  "Director General",
+  "Training Specialist",
+  "Course Director",
+  "Professor",
+  "Associate Professor",
+  "Assistant Professor",
+  "Senior Lecturer",
+  "Lecturer",
+  "Instructor",
+  "Consultant",
+  "Adviser",
+] as const;
+
 export type Teacher = {
   id: string;
   name: string;
+  designation?: string;
 };
 
 export type ModuleEntry = {
@@ -70,6 +88,9 @@ export type Footer = {
   signature: string | null;
   signatureDate: string;
   name: string;
+  designation?: string;
+  isCourseCoordinator?: boolean;
+  courseName?: string;
   lines: string[];
 };
 

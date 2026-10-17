@@ -60,8 +60,9 @@ export type Action =
   | { type: "copy-managers"; dayId: string; batchId: string }
   | { type: "set-cell"; dayId: string; batchId: string; sessionId: string; cell: CellContent }
   | { type: "set-span"; dayId: string; batchId: string; sessionId: string; span: number }
-  | { type: "add-teacher"; name: string }
+  | { type: "add-teacher"; name: string; designation?: string }
   | { type: "rename-teacher"; id: string; name: string }
+  | { type: "set-teacher-designation"; id: string; designation: string }
   | { type: "remove-teacher"; id: string }
   | { type: "add-module"; code: string; title: string }
   | { type: "update-module"; id: string; code: string; title: string }
@@ -201,8 +202,23 @@ export function scheduleReducer(state: AppState, action: Action): AppState {
     }
     case "set-recap-label":
       return { ...state, recapLabel: action.text };
-    case "set-footer":
-      return { ...state, footer: { ...state.footer, ...action.patch } };
+    case "set-footer": {
+      const updated = { ...state.footer, ...action.patch };
+      if (
+        "designation" in action.patch ||
+        "isCourseCoordinator" in action.patch ||
+        "courseName" in action.patch
+      ) {
+        const des = updated.designation ? updated.designation.trim() : "";
+        const isCoord = updated.isCourseCoordinator !== false;
+        const line1 = des
+          ? (isCoord ? `${des} & Course Coordinator` : des)
+          : (isCoord ? "Course Coordinator" : "");
+        const line2 = updated.courseName ? updated.courseName.trim() : "";
+        updated.lines = [line1, line2].filter(Boolean);
+      }
+      return { ...state, footer: updated };
+    }
     case "set-footer-line":
       return {
         ...state,
@@ -389,7 +405,21 @@ export function scheduleReducer(state: AppState, action: Action): AppState {
       if (state.teachers.some((teacher) => teacher.name.toLowerCase() === name.toLowerCase())) {
         return state;
       }
-      return { ...state, teachers: [...state.teachers, { id: uid("teacher"), name }] };
+      return {
+        ...state,
+        teachers: [
+          ...state.teachers,
+          { id: uid("teacher"), name, designation: action.designation?.trim() || "" },
+        ],
+      };
+    }
+    case "set-teacher-designation": {
+      return {
+        ...state,
+        teachers: state.teachers.map((teacher) =>
+          teacher.id === action.id ? { ...teacher, designation: action.designation } : teacher,
+        ),
+      };
     }
     case "rename-teacher": {
       const current = state.teachers.find((teacher) => teacher.id === action.id);
