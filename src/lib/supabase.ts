@@ -1,6 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createDemoState } from "./demo";
-import { catalogFromModules, rosterRange } from "./text";
+import { catalogFromModules, formatModuleCode, parseModuleCode, rosterRange } from "./text";
 import { normalizeState } from "./storage";
 import type { AppState, Batch, ModuleEntry, Teacher } from "./types";
 
@@ -34,7 +34,7 @@ export async function fetchRemoteSchedule(): Promise<AppState | null> {
     const [scheduleRes, teachersRes, modulesRes, batchesRes] = await Promise.all([
       supabase.from(SCHEDULE_TABLE).select("data").eq("id", SCHEDULE_ROW_ID).maybeSingle(),
       supabase.from(TEACHERS_TABLE).select("id, name").order("name"),
-      supabase.from(MODULES_TABLE).select("id, code, title").order("code"),
+      supabase.from(MODULES_TABLE).select("id, module_number, module_subnumber, module_name").order("id"),
       supabase.from(BATCHES_TABLE).select("id, name, number_of_students").order("id"),
     ]);
 
@@ -64,11 +64,30 @@ export async function fetchRemoteSchedule(): Promise<AppState | null> {
 
     // Merge relational modules
     if (modulesRes.data && modulesRes.data.length > 0) {
-      baseState.modules = modulesRes.data.map((row: { id: string; code: string; title: string }): ModuleEntry => ({
-        id: row.id,
-        code: row.code,
-        title: row.title ?? "",
-      }));
+      baseState.modules = modulesRes.data.map((row: {
+        id: number | string;
+        module_number?: string | number;
+        module_subnumber?: string | number;
+        module_name?: string;
+      }): ModuleEntry => {
+        const id = String(row.id);
+        const mNum = row.module_number !== undefined
+          ? String(row.module_number).replace(/^M-\s*/i, "").trim()
+          : "";
+        const sNum = row.module_subnumber !== undefined
+          ? String(row.module_subnumber).replace(/^\./, "").trim()
+          : "";
+        const name = row.module_name !== undefined ? (row.module_name ?? "") : "";
+        const code = formatModuleCode(mNum, sNum);
+        return {
+          id,
+          moduleNumber: mNum,
+          moduleSubnumber: sNum,
+          moduleName: name,
+          code,
+          title: name,
+        };
+      });
       const catalog = catalogFromModules(baseState.modules);
       baseState.moduleNumbers = catalog.moduleNumbers;
       baseState.subNumbers = catalog.subNumbers;
@@ -123,19 +142,31 @@ async function syncTeachers(teachers: Teacher[], timestamp: string) {
 async function syncModules(modules: ModuleEntry[], timestamp: string) {
   if (!supabase) return;
   if (modules.length > 0) {
-    const rows = modules.map((m) => ({
-      id: m.id,
-      code: m.code,
-      title: m.title || "",
-      updated_at: timestamp,
-    }));
+    const rows = modules.map((m, index) => {
+      const numId = parseInt(m.id.replace(/\D/g, ""), 10) || (index + 1);
+      const parsed = parseModuleCode(m.code);
+      const mNum = m.moduleNumber ?? (parsed ? parsed.moduleNumber.replace(/^M-/, "") : m.code);
+      const sNum = m.moduleSubnumber ?? (parsed ? parsed.subNumber.replace(/^\./, "") : "");
+      const name = m.moduleName ?? m.title ?? "";
+      return {
+        id: numId,
+        module_number: mNum,
+        module_subnumber: sNum,
+        module_name: name,
+        updated_at: timestamp,
+      };
+    });
     await supabase.from(MODULES_TABLE).upsert(rows, { onConflict: "id" });
   }
 
   const { data: remoteRows, error } = await supabase.from(MODULES_TABLE).select("id");
   if (!error && remoteRows) {
-    const activeIds = new Set(modules.map((m) => m.id));
-    const toDelete = remoteRows.map((r: { id: string }) => r.id).filter((id) => !activeIds.has(id));
+    const activeNumIds = new Set(
+      modules.map((m, idx) => parseInt(m.id.replace(/\D/g, ""), 10) || (idx + 1)),
+    );
+    const toDelete = remoteRows
+      .map((r: { id: number }) => r.id)
+      .filter((id) => !activeNumIds.has(id));
     if (toDelete.length > 0) {
       await supabase.from(MODULES_TABLE).delete().in("id", toDelete);
     }

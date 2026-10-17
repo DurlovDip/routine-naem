@@ -1,13 +1,15 @@
 import { createDemoState } from "./demo";
 import {
   catalogFromModules,
+  formatModuleCode,
   normalizeModuleNumber,
   normalizeSubNumber,
+  parseModuleCode,
   rosterRange,
   sortModuleNumbers,
   sortSubNumbers,
 } from "./text";
-import type { AppState, Batch, DayPlan, Footer, HeaderLine } from "./types";
+import type { AppState, Batch, DayPlan, Footer, HeaderLine, ModuleEntry } from "./types";
 
 const KEY = "acsd-daily-schedule-v1";
 
@@ -21,6 +23,25 @@ function repairBatch(value: unknown): Batch | null {
     name: typeof batch.name === "string" ? batch.name : "",
     numberOfStudents: count,
     roster: Array.isArray(batch.roster) && batch.roster.length > 0 ? batch.roster : rosterRange(1, count),
+  };
+}
+
+function repairModule(value: unknown): ModuleEntry | null {
+  if (!value || typeof value !== "object") return null;
+  const m = value as Partial<ModuleEntry>;
+  if (typeof m.id !== "string") return null;
+  const parsed = m.code ? parseModuleCode(m.code) : null;
+  const mNum = m.moduleNumber ?? (parsed ? parsed.moduleNumber.replace(/^M-/, "") : "");
+  const sNum = m.moduleSubnumber ?? (parsed ? parsed.subNumber.replace(/^\./, "") : "");
+  const name = m.moduleName ?? m.title ?? "";
+  const code = m.code ?? formatModuleCode(mNum, sNum);
+  return {
+    id: m.id,
+    moduleNumber: mNum,
+    moduleSubnumber: sNum,
+    moduleName: name,
+    code,
+    title: name,
   };
 }
 
@@ -57,7 +78,9 @@ export function normalizeState(raw: unknown): AppState | null {
     ...(value.footer && typeof value.footer === "object" ? (value.footer as Partial<Footer>) : {}),
   };
   const active = days.some((day) => day.id === value.activeDayId) ? value.activeDayId! : days[0].id;
-  const modules = Array.isArray(value.modules) ? value.modules : [];
+  const modules = Array.isArray(value.modules)
+    ? value.modules.map(repairModule).filter((m): m is ModuleEntry => m !== null)
+    : [];
   const derived = catalogFromModules(modules);
   const moduleNumbers = stringList(value.moduleNumbers, normalizeModuleNumber, sortModuleNumbers);
   const subNumbers = stringList(value.subNumbers, normalizeSubNumber, sortSubNumbers);

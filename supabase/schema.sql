@@ -16,10 +16,14 @@ drop policy if exists "Allow public all teachers" on public.teachers;
 create policy "Allow public all teachers" on public.teachers for all using (true) with check (true);
 
 -- 2. Modules Table
-create table if not exists public.modules (
-  id text primary key,
-  code text not null,
-  title text not null default '',
+-- id is integer, module_number, module_subnumber, module_name (blank initially)
+drop table if exists public.modules cascade;
+
+create table public.modules (
+  id integer primary key,
+  module_number text not null,
+  module_subnumber text not null default '',
+  module_name text not null default '',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -92,23 +96,27 @@ insert into public.teachers (id, name) values
   ('teacher-16', 'Dr. Ayet')
 on conflict (id) do update set name = excluded.name, updated_at = now();
 
--- 7. Initial Seed: Modules
-insert into public.modules (id, code, title) values
-  ('module-1', 'M- 7.04', '(Theory)'),
-  ('module-2', 'M- 7.04', 'TPP (Theory & Practice)'),
-  ('module-3', 'M- 7.04', '(Practice & Presentation)'),
-  ('module-4', 'M- 1.06', ''),
-  ('module-5', 'M- 1.08', ''),
-  ('module-6', 'M- 3.02', ''),
-  ('module-7', 'M- 3.05', ''),
-  ('module-8', 'M- 5.01', ''),
-  ('module-9', 'M- 5.06', ''),
-  ('module-10', 'M- 6.01', ''),
-  ('module-11', 'M- 8.03', ''),
-  ('module-12', 'M- 8.07', ''),
-  ('module-13', 'M- 8.08', ''),
-  ('module-14', 'M- 8.10', '')
-on conflict (id) do update set code = excluded.code, title = excluded.title, updated_at = now();
+-- 7. Initial Seed: Modules (id: integer, module_number, module_subnumber, module_name)
+insert into public.modules (id, module_number, module_subnumber, module_name) values
+  (1, '7', '04', 'Theory'),
+  (2, '7', '04', 'TPP (Theory & Practice)'),
+  (3, '7', '04', 'Practice & Presentation'),
+  (4, '1', '06', ''),
+  (5, '1', '08', ''),
+  (6, '3', '02', ''),
+  (7, '3', '05', ''),
+  (8, '5', '01', ''),
+  (9, '5', '06', ''),
+  (10, '6', '01', ''),
+  (11, '8', '03', ''),
+  (12, '8', '07', ''),
+  (13, '8', '08', ''),
+  (14, '8', '10', '')
+on conflict (id) do update set
+  module_number = excluded.module_number,
+  module_subnumber = excluded.module_subnumber,
+  module_name = excluded.module_name,
+  updated_at = now();
 
 -- 8. Initial Seed: Batches (id: integer, name: default blank, number_of_students: 40)
 insert into public.batches (id, name, number_of_students) values

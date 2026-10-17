@@ -13,6 +13,9 @@ export type Teacher = {
 
 export type ModuleEntry = {
   id: string;
+  moduleNumber?: string;
+  moduleSubnumber?: string;
+  moduleName?: string;
   code: string;
   title: string;
 };
