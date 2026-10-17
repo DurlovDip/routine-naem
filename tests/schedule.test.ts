@@ -12,7 +12,7 @@ import {
   sessionsContiguous,
 } from "../src/lib/schedule";
 import { batchLines, formatModuleCode, joinWithAnd, parseModuleCode, rotateIds } from "../src/lib/text";
-import { formatClock, weekdayName } from "../src/lib/time";
+import { formatClock, formatSignatureDate, toIsoDate, weekdayName } from "../src/lib/time";
 
 describe("demo day", () => {
   const state = createDemoState();
@@ -188,4 +188,14 @@ describe("rotation, merges and clashes", () => {
     const sessions = state.days[0].slots.filter((slot) => slot.kind === "session");
     expect(sessions).toHaveLength(10);
   });
+
+  it("converts signature dates between ISO calendar format and DD.MM.YY format", () => {
+    expect(toIsoDate("17.10.26")).toBe("2026-10-17");
+    expect(toIsoDate("17/10/2026")).toBe("2026-10-17");
+    expect(toIsoDate("2026-10-17")).toBe("2026-10-17");
+    expect(formatSignatureDate("2026-10-17")).toBe("17.10.26");
+    expect(formatSignatureDate("17.10.26")).toBe("17.10.26");
+    expect(formatSignatureDate("2026-05-09")).toBe("09.05.26");
+  });
 });
+

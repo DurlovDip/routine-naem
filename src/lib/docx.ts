@@ -20,7 +20,7 @@ import {
 import { buildTimeline, rowCells } from "./schedule";
 import { downloadBlob } from "./storage";
 import { batchLines, formatModule, joinWithAnd, orderedManagers } from "./text";
-import { formatClock, formatDayNumber, formatSlashDate, weekdayName } from "./time";
+import { formatClock, formatDayNumber, formatSignatureDate, formatSlashDate, weekdayName } from "./time";
 import type { AppState, DayPlan, HeaderStyle } from "./types";
 
 const PAGE_WIDTH = 16838;
@@ -274,7 +274,7 @@ export function buildScheduleDocument(state: AppState, day: DayPlan, signature?:
     );
   }
   const signLines = [
-    state.footer.signatureDate,
+    state.footer.signatureDate ? formatSignatureDate(state.footer.signatureDate) : "",
     state.footer.name,
     ...state.footer.lines.filter((item) => item.trim()),
   ];

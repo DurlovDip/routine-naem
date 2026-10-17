@@ -6,7 +6,7 @@ import {
   orderedManagers,
 } from "../lib/text";
 import { buildTimeline, rowCells } from "../lib/schedule";
-import { formatClock, formatDayNumber, formatSlashDate, weekdayName } from "../lib/time";
+import { formatClock, formatDayNumber, formatSignatureDate, formatSlashDate, weekdayName } from "../lib/time";
 import type { AppState, CellContent, DayPlan } from "../lib/types";
 
 function TimeStack({ start, end }: { start: number; end: number }) {
@@ -168,7 +168,7 @@ export function ScheduleSheet({
             <div className="sign-gap" />
           )}
           {state.footer.signatureDate ? (
-            <div className="sign-date">{state.footer.signatureDate}</div>
+            <div className="sign-date">{formatSignatureDate(state.footer.signatureDate)}</div>
           ) : null}
           {state.footer.name ? <div className="sign-name">{state.footer.name}</div> : null}
           {state.footer.lines.map((line, index) =>

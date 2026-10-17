@@ -3,7 +3,7 @@ import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { buildTimeline, sessionSlots } from "../lib/schedule";
 import { readSignatureFile } from "../lib/storage";
 import { cleanBatchNumber, joinWithAnd, parseRoster, rosterRange } from "../lib/text";
-import { formatClock, formatRange } from "../lib/time";
+import { formatClock, formatRange, formatSignatureDate, toIsoDate } from "../lib/time";
 import type { Batch, DayPlan, HeaderStyle } from "../lib/types";
 import { useSchedule } from "../state";
 import { Button, Field } from "./ui";
@@ -583,12 +583,47 @@ export function FooterEditor() {
           ) : null}
         </div>
       </div>
-      <Field label="Signature date">
-        <input
-          className="field"
-          value={footer.signatureDate}
-          onChange={(event) => dispatch({ type: "set-footer", patch: { signatureDate: event.target.value } })}
-        />
+      <Field
+        label="Signature date"
+        hint={
+          footer.signatureDate
+            ? `Prints as: ${formatSignatureDate(footer.signatureDate)}`
+            : "Choose date for the signature line"
+        }
+      >
+        <div className="flex gap-2 items-center">
+          <input
+            className="field flex-1"
+            type="date"
+            aria-label="Signature date"
+            value={toIsoDate(footer.signatureDate)}
+            onClick={(event) => {
+              try {
+                event.currentTarget.showPicker?.();
+              } catch {
+                // ignore
+              }
+            }}
+            onChange={(event) =>
+              dispatch({
+                type: "set-footer",
+                patch: { signatureDate: formatSignatureDate(event.target.value) },
+              })
+            }
+          />
+          <Button
+            tone="quiet"
+            onClick={() => {
+              const today = new Date().toISOString().slice(0, 10);
+              dispatch({
+                type: "set-footer",
+                patch: { signatureDate: formatSignatureDate(today) },
+              });
+            }}
+          >
+            Today
+          </Button>
+        </div>
       </Field>
       <Field label="Name">
         <input

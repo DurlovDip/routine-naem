@@ -72,3 +72,47 @@ export function clampDuration(value: number): number {
   if (!Number.isFinite(value)) return 5;
   return Math.min(360, Math.max(5, Math.round(value)));
 }
+
+/**
+ * Converts various date formats (DD.MM.YY, DD.MM.YYYY, DD/MM/YYYY, YYYY-MM-DD)
+ * to an ISO YYYY-MM-DD string suitable for <input type="date">.
+ */
+export function toIsoDate(value: string): string {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+  const mFull = trimmed.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if (mFull) {
+    const [, d, m, y] = mFull;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  const mShort = trimmed.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2})$/);
+  if (mShort) {
+    const [, d, m, y] = mShort;
+    const fullYear = 2000 + parseInt(y, 10);
+    return `${fullYear}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+
+  return "";
+}
+
+/**
+ * Formats a date string (ISO YYYY-MM-DD or existing) into signature format DD.MM.YY (e.g. 17.10.26).
+ */
+export function formatSignatureDate(value: string): string {
+  if (!value) return "";
+  const trimmed = value.trim();
+  if (/^\d{2}\.\d{2}\.\d{2}$/.test(trimmed)) return trimmed;
+
+  const iso = toIsoDate(trimmed);
+  if (iso) {
+    const [y, m, d] = iso.split("-");
+    const shortYear = y.length === 4 ? y.slice(2) : y;
+    return `${d.padStart(2, "0")}.${m.padStart(2, "0")}.${shortYear}`;
+  }
+
+  return trimmed;
+}
+
