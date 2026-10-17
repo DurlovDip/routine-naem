@@ -2,23 +2,42 @@ import { useEffect, useState, type KeyboardEvent } from "react";
 import { useAuth } from "../auth";
 import type { DirectoryRow } from "../lib/mockAuth";
 import { roleLabel, type StoredRole } from "../lib/roles";
+import type { Teacher } from "../lib/types";
 import { useSchedule } from "../state";
 import { Button } from "./ui";
 
 type Assignable = Exclude<StoredRole, "super_admin">;
 
+function rowsFromSchedule(teachers: Teacher[]): DirectoryRow[] {
+  return teachers.map((teacher) => ({
+    teacherId: teacher.id,
+    teacherName: teacher.name,
+    designation: teacher.designation ?? "",
+    username: null,
+    storedRole: "teacher",
+    role: "teacher",
+    roleStart: null,
+    roleEnd: null,
+  }));
+}
+
 export function PeopleSection() {
   const auth = useAuth();
-  const { dispatch } = useSchedule();
+  const { state, dispatch } = useSchedule();
   const [rows, setRows] = useState<DirectoryRow[]>([]);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   async function load() {
     try {
-      setRows(await auth.directory());
+      const result = await auth.directory();
+      setRows(result.rows);
+      setNotice(result.notice);
       setError(null);
     } catch (err) {
+      setRows([]);
+      setNotice(null);
       setError(err instanceof Error ? err.message : String(err));
     }
   }
@@ -42,14 +61,32 @@ export function PeopleSection() {
     return null;
   }
 
+  const scheduleRows = rowsFromSchedule(state.teachers);
+  const shown = (rows.length > 0 ? rows : scheduleRows).map((row) => {
+    const local = state.teachers.find((teacher) => teacher.id === row.teacherId);
+    return {
+      ...row,
+      designation: row.designation || local?.designation || "",
+      teacherName: row.teacherName || local?.name || row.teacherId,
+    };
+  });
+
   return (
     <div className="access-panel" id="people-panel">
       <p className="hint">
         Assign coordinator or temporary coordinator for a date range. Outside that range the account acts as a teacher. A super admin has no dates. Name and designation save when you leave the field.
       </p>
+      {notice ? (
+        <p className="auth-error" id="roles-notice">
+          {notice}
+        </p>
+      ) : null}
       {error ? <p className="auth-error">{error}</p> : null}
+      {!notice && !error && shown.length === 0 ? (
+        <p className="hint">No teachers were returned from the teachers table.</p>
+      ) : null}
       <ul className="account-list">
-        {rows.map((row) => (
+        {shown.map((row) => (
           <RoleRow
             key={row.teacherId}
             row={row}

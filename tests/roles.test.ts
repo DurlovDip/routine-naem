@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { effectiveRole } from "../src/lib/roles";
+import { effectiveRole, missingTeacherColumnNotice } from "../src/lib/roles";
 
 describe("effective role", () => {
   it("keeps a super admin active without dates", () => {
@@ -16,6 +16,13 @@ describe("effective role", () => {
   it("treats a temporary coordinator as its own role inside the range", () => {
     expect(effectiveRole("temp_coordinator", "2026-10-01", "2026-10-31", "2026-10-18")).toBe("temp_coordinator");
     expect(effectiveRole("temp_coordinator", "2026-10-01", "2026-10-31", "2026-11-01")).toBe("teacher");
+  });
+
+  it("names the auth migration only when an account column is missing", () => {
+    const notice = missingTeacherColumnNotice("column teachers.username does not exist");
+    expect(notice).toContain("supabase/migration_add_auth_roles.sql");
+    expect(missingTeacherColumnNotice("column teachers.designation does not exist")).toBeNull();
+    expect(missingTeacherColumnNotice("Only a super admin can open the role list")).toBeNull();
   });
 
   it("falls back when a dated role is missing either date", () => {

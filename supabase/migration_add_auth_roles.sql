@@ -77,6 +77,7 @@ alter table public.teachers add column if not exists username text;
 alter table public.teachers add column if not exists role text;
 alter table public.teachers add column if not exists role_start date;
 alter table public.teachers add column if not exists role_end date;
+alter table public.teachers add column if not exists designation text not null default '';
 
 update public.teachers
 set role = 'teacher'

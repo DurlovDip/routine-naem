@@ -19,7 +19,15 @@ import {
   type DirectoryRow,
   type SessionView,
 } from "./lib/mockAuth";
-import { normalizeUsername, syntheticEmail, usernameError, type StoredRole } from "./lib/roles";
+import {
+  effectiveRole,
+  missingTeacherColumnNotice,
+  normalizeUsername,
+  syntheticEmail,
+  todayIso,
+  usernameError,
+  type StoredRole,
+} from "./lib/roles";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 
 export const isAuthMock = import.meta.env.VITE_AUTH_MOCK === "true";
@@ -35,7 +43,7 @@ type AuthValue = {
   signUp: (input: { username: string; teacherId: string; password: string }) => Promise<string | null>;
   signOut: () => Promise<void>;
   unclaimedTeachers: () => Promise<{ id: string; name: string }[]>;
-  directory: () => Promise<DirectoryRow[]>;
+  directory: () => Promise<{ rows: DirectoryRow[]; notice: string | null }>;
   updateTeacher: (
     teacherId: string,
     patch: { name?: string; designation?: string },
@@ -54,20 +62,46 @@ function rpcError(error: { message: string } | null): string | null {
   return error ? error.message : null;
 }
 
-async function mergeTeacherDetails(rows: DirectoryRow[]): Promise<DirectoryRow[]> {
-  if (!supabase || rows.length === 0) return rows;
-  const { data, error } = await supabase.from("teachers").select("id, name, designation");
-  if (error || !data) return rows;
-  const byId = new Map(
-    (data as Array<{ id: string; name: string; designation?: string | null }>).map((teacher) => [teacher.id, teacher]),
-  );
-  return rows.map((row) => {
-    const teacher = byId.get(row.teacherId);
-    if (!teacher) return row;
+function basicTeacherRows(
+  teachers: Array<{ id: string; name: string; designation?: string | null }>,
+): DirectoryRow[] {
+  return teachers.map((teacher) => ({
+    teacherId: teacher.id,
+    teacherName: teacher.name,
+    designation: teacher.designation ?? "",
+    username: null,
+    storedRole: "teacher",
+    role: "teacher",
+    roleStart: null,
+    roleEnd: null,
+  }));
+}
+
+type TeacherAccountRow = {
+  id: string;
+  name: string;
+  username?: string | null;
+  role?: string | null;
+  role_start?: string | null;
+  role_end?: string | null;
+  designation?: string | null;
+};
+
+function accountTeacherRows(teachers: TeacherAccountRow[]): DirectoryRow[] {
+  const today = todayIso();
+  return teachers.map((teacher) => {
+    const storedRole = (teacher.role ?? "teacher") as DirectoryRow["storedRole"];
+    const roleStart = teacher.role_start ?? null;
+    const roleEnd = teacher.role_end ?? null;
     return {
-      ...row,
-      teacherName: teacher.name || row.teacherName,
-      designation: teacher.designation ?? row.designation ?? "",
+      teacherId: teacher.id,
+      teacherName: teacher.name,
+      designation: teacher.designation ?? "",
+      username: teacher.username ?? null,
+      storedRole,
+      role: effectiveRole(storedRole, roleStart, roleEnd, today),
+      roleStart,
+      roleEnd,
     };
   });
 }
@@ -268,38 +302,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const directory = useCallback(async () => {
-    if (isAuthMock) return mockDirectory();
-    if (!supabase) return [];
-    try {
-      const { data, error } = await supabase.rpc("access_directory");
-      if (error) throw new Error(error.message);
-      const rows = ((data ?? []) as Record<string, unknown>[]).map((row) => ({
-        teacherId: String(row.teacher_id),
-        teacherName: String(row.teacher_name),
-        designation: row.designation != null ? String(row.designation) : "",
-        username: row.username ? String(row.username) : null,
-        storedRole: row.stored_role as DirectoryRow["storedRole"],
-        role: row.effective as DirectoryRow["role"],
-        roleStart: row.role_start ? String(row.role_start) : null,
-        roleEnd: row.role_end ? String(row.role_end) : null,
-      }));
-      return mergeTeacherDetails(rows);
-    } catch {
-      const { data: teachers } = await supabase.from("teachers").select("id, name, designation");
-      if (teachers) {
-        return (teachers as Array<{ id: string; name: string; designation?: string | null }>).map((t) => ({
-          teacherId: t.id,
-          teacherName: t.name,
-          designation: t.designation ?? "",
-          username: null,
-          storedRole: "teacher" as const,
-          role: "teacher" as const,
-          roleStart: null,
-          roleEnd: null,
-        }));
-      }
-      return [];
+    if (isAuthMock) return { rows: mockDirectory(), notice: null };
+    if (!supabase) return { rows: [], notice: "Supabase is not configured." };
+
+    const columns = "id, name, username, role, role_start, role_end, auth_user_id, designation";
+    const full = await supabase.from("teachers").select(columns).order("name");
+    if (!full.error) {
+      const rows = accountTeacherRows((full.data ?? []) as TeacherAccountRow[]);
+      return {
+        rows,
+        notice: rows.length
+          ? null
+          : "The teachers table returned no rows for this login. Authenticated users can read it. The editor is still using the teachers saved in the schedule.",
+      };
     }
+
+    const missingDesignation = /designation/i.test(full.error.message) && /does not exist|42703|schema cache/i.test(full.error.message);
+    if (missingDesignation) {
+      const withoutDesignation = await supabase
+        .from("teachers")
+        .select("id, name, username, role, role_start, role_end, auth_user_id")
+        .order("name");
+      if (!withoutDesignation.error) {
+        const rows = accountTeacherRows((withoutDesignation.data ?? []) as TeacherAccountRow[]);
+        return {
+          rows,
+          notice: rows.length
+            ? null
+            : "The teachers table returned no rows for this login. Authenticated users can read it. The editor is still using the teachers saved in the schedule.",
+        };
+      }
+      return {
+        rows: [],
+        notice: missingTeacherColumnNotice(withoutDesignation.error.message) ?? withoutDesignation.error.message,
+      };
+    }
+
+    const names = await supabase.from("teachers").select("id, name").order("name");
+    if (!names.error && names.data?.length) {
+      return {
+        rows: basicTeacherRows(names.data),
+        notice: missingTeacherColumnNotice(full.error.message) ?? full.error.message,
+      };
+    }
+    return {
+      rows: [],
+      notice: [missingTeacherColumnNotice(full.error.message) ?? full.error.message, names.error?.message]
+        .filter(Boolean)
+        .join(" "),
+    };
   }, []);
 
   const updateTeacher = useCallback(
@@ -323,6 +374,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .from("teachers")
           .update({ ...next, updated_at: new Date().toISOString() })
           .eq("id", teacherId);
+        if (error && next.designation !== undefined && /designation/i.test(error.message) && /does not exist|42703/i.test(error.message)) {
+          const retry = await supabase.from("teachers").update({ ...(next.name ? { name: next.name } : {}), updated_at: new Date().toISOString() }).eq("id", teacherId);
+          if (next.name && !retry.error) {
+            return "Name saved. Designation is not a column on teachers yet. Run supabase/migration_add_teacher_designation.sql.";
+          }
+          return "Designation is not a column on teachers yet. Run supabase/migration_add_teacher_designation.sql.";
+        }
         return rpcError(error);
       } catch (err) {
         return err instanceof Error ? err.message : String(err);

@@ -42,6 +42,14 @@ export function effectiveRole(
   return "teacher";
 }
 
+export const AUTH_ROLES_MIGRATION = "supabase/migration_add_auth_roles.sql";
+
+export function missingTeacherColumnNotice(message: string): string | null {
+  if (!/does not exist|42703|schema cache/i.test(message)) return null;
+  if (!/username|role_start|role_end|auth_user_id|teachers\.role\b/i.test(message)) return null;
+  return `The teachers table is missing account columns (username, role, role_start, role_end, auth_user_id). In the Supabase SQL editor, run ${AUTH_ROLES_MIGRATION}. Names can still load from id and name.`;
+}
+
 export function roleLabel(role: AppRole): string {
   if (role === "super_admin") return "Super admin";
   if (role === "coordinator") return "Coordinator";
