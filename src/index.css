@@ -667,6 +667,11 @@ button { cursor: pointer; }
 
 .status { font-size: 0.75rem; color: var(--muted); }
 
+.modal-back .auth-shell {
+  min-height: auto;
+  padding: 0;
+  background: transparent;
+}
 .auth-shell {
   min-height: 100%;
   display: flex;

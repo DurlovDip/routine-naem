@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { CopyPlus, FileDown, LogOut, Menu, Printer, Trash2, X } from "lucide-react";
+import { CopyPlus, FileDown, LogIn, LogOut, Menu, Printer, Trash2, X } from "lucide-react";
 import { AuthProvider, useAuth } from "./auth";
 import { PeopleSection } from "./components/AccessPanels";
 import { AuthScreen } from "./components/AuthScreen";
@@ -37,6 +37,7 @@ function Shell() {
   const [mode, setMode] = useState<Mode>(() => readHash());
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const view: Mode = canEdit ? mode : "preview";
   const showEditor = view !== "preview";
@@ -113,7 +114,17 @@ function Shell() {
               >
                 <LogOut size={16} /> Sign out
               </Button>
-            ) : null}
+            ) : (
+              <Button
+                tone="primary"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setShowAuthModal(true);
+                }}
+              >
+                <LogIn size={16} /> Sign in
+              </Button>
+            )}
           </div>
         </div>
       </header>
@@ -294,6 +305,13 @@ function Shell() {
             setConfirmDelete(false);
           }}
         />
+      ) : null}
+      {showAuthModal && !auth.session ? (
+        <div className="modal-back" role="presentation" onMouseDown={() => setShowAuthModal(false)}>
+          <div onMouseDown={(e) => e.stopPropagation()}>
+            <AuthScreen onClose={() => setShowAuthModal(false)} initialTab="signin" />
+          </div>
+        </div>
       ) : null}
     </div>
   );

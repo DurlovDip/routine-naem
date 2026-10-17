@@ -1,12 +1,19 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { X } from "lucide-react";
 import { useAuth } from "../auth";
 import { Button } from "./ui";
 
 type Tab = "signin" | "signup";
 
-export function AuthScreen() {
+export function AuthScreen({
+  onClose,
+  initialTab = "signin",
+}: {
+  onClose?: () => void;
+  initialTab?: "signin" | "signup";
+} = {}) {
   const auth = useAuth();
-  const [tab, setTab] = useState<Tab>("signup");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -47,12 +54,27 @@ export function AuthScreen() {
         ? await auth.signUp({ username, teacherId, password })
         : await auth.signIn(username, password);
     setBusy(false);
-    if (message) setError(message);
+    if (message) {
+      setError(message);
+    } else if (onClose) {
+      onClose();
+    }
   }
 
   return (
     <div className="auth-shell">
-      <form className="auth-card" onSubmit={(event) => void submit(event)}>
+      <form className="auth-card" style={{ position: "relative" }} onSubmit={(event) => void submit(event)}>
+        {onClose ? (
+          <button
+            type="button"
+            aria-label="Close"
+            className="icon-btn"
+            style={{ position: "absolute", top: "0.85rem", right: "0.85rem" }}
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+        ) : null}
         <h1>Daily Schedule</h1>
         <p className="auth-lead">Sign in with the username you chose. There is no separate email.</p>
         {auth.mock ? <p className="hint">This screen is a local preview. Accounts stay in this browser.</p> : null}
