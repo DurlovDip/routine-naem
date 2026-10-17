@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { useAuth } from "../auth";
 import type { DirectoryRow } from "../lib/mockAuth";
 import { roleLabel, type StoredRole } from "../lib/roles";
+import { supabase } from "../lib/supabase";
+import { STANDARD_DESIGNATIONS } from "../lib/types";
+import { useSchedule } from "../state";
 import { Button } from "./ui";
 
 type Assignable = Exclude<StoredRole, "super_admin">;
@@ -63,6 +66,10 @@ function RoleRow({
   busy: boolean;
   onSave: (role: Assignable, start: string | null, end: string | null) => Promise<void>;
 }) {
+  const { state, dispatch } = useSchedule();
+  const teacher = state.teachers.find((t) => t.id === row.teacherId);
+  const currentDesignation = teacher?.designation ?? row.designation ?? "";
+
   const initial = row.storedRole === "super_admin" ? "teacher" : row.storedRole;
   const [role, setRole] = useState<Assignable>(initial);
   const [start, setStart] = useState(row.roleStart ?? "");
@@ -71,12 +78,51 @@ function RoleRow({
   const activeNote =
     row.storedRole === row.role ? roleLabel(row.role) : `${roleLabel(row.storedRole)} stored · ${roleLabel(row.role)} today`;
 
+  function updateDesignation(des: string) {
+    dispatch({
+      type: "set-teacher-designation",
+      id: row.teacherId,
+      designation: des,
+    });
+    if (supabase) {
+      void supabase
+        .from("teachers")
+        .update({ designation: des, updated_at: new Date().toISOString() })
+        .eq("id", row.teacherId);
+    }
+  }
+
   if (row.storedRole === "super_admin") {
     return (
-      <li className="account-row">
+      <li className="account-row role-row">
         <div>
           <strong>{row.teacherName}</strong>
-          <span className="hint">{row.username ? `@${row.username}` : "No account yet"} · Super admin</span>
+          <span className="hint">
+            {row.username ? `@${row.username}` : "No account yet"}
+            {currentDesignation ? ` · ${currentDesignation}` : ""} · Super admin
+          </span>
+        </div>
+        <div className="role-form">
+          <label>
+            <span className="field-label">Designation</span>
+            <select
+              className="field"
+              aria-label={`Designation for ${row.teacherName}`}
+              value={currentDesignation}
+              onChange={(event) => updateDesignation(event.target.value)}
+            >
+              <option value="">(No Designation)</option>
+              {STANDARD_DESIGNATIONS.map((des) => (
+                <option key={des} value={des}>
+                  {des}
+                </option>
+              ))}
+              {currentDesignation && !STANDARD_DESIGNATIONS.includes(currentDesignation as any) && (
+                <option value={currentDesignation}>{currentDesignation}</option>
+              )}
+            </select>
+          </label>
+          <div className="role-chip font-semibold">Super admin</div>
         </div>
       </li>
     );
@@ -87,13 +133,38 @@ function RoleRow({
       <div>
         <strong>{row.teacherName}</strong>
         <span className="hint">
-          {row.username ? `@${row.username}` : "No account yet"} · {activeNote}
+          {row.username ? `@${row.username}` : "No account yet"}
+          {currentDesignation ? ` · ${currentDesignation}` : ""} · {activeNote}
         </span>
       </div>
       <div className="role-form">
         <label>
+          <span className="field-label">Designation</span>
+          <select
+            className="field"
+            aria-label={`Designation for ${row.teacherName}`}
+            value={currentDesignation}
+            onChange={(event) => updateDesignation(event.target.value)}
+          >
+            <option value="">(No Designation)</option>
+            {STANDARD_DESIGNATIONS.map((des) => (
+              <option key={des} value={des}>
+                {des}
+              </option>
+            ))}
+            {currentDesignation && !STANDARD_DESIGNATIONS.includes(currentDesignation as any) && (
+              <option value={currentDesignation}>{currentDesignation}</option>
+            )}
+          </select>
+        </label>
+        <label>
           <span className="field-label">Role</span>
-          <select className="field" aria-label={`Role for ${row.teacherName}`} value={role} onChange={(event) => setRole(event.target.value as Assignable)}>
+          <select
+            className="field"
+            aria-label={`Role for ${row.teacherName}`}
+            value={role}
+            onChange={(event) => setRole(event.target.value as Assignable)}
+          >
             <option value="teacher">Teacher</option>
             <option value="coordinator">Coordinator</option>
             <option value="temp_coordinator">Temporary coordinator</option>
@@ -103,11 +174,25 @@ function RoleRow({
           <>
             <label>
               <span className="field-label">Starts</span>
-              <input className="field" type="date" aria-label={`Start for ${row.teacherName}`} value={start} onChange={(event) => setStart(event.target.value)} required />
+              <input
+                className="field"
+                type="date"
+                aria-label={`Start for ${row.teacherName}`}
+                value={start}
+                onChange={(event) => setStart(event.target.value)}
+                required
+              />
             </label>
             <label>
               <span className="field-label">Ends</span>
-              <input className="field" type="date" aria-label={`End for ${row.teacherName}`} value={end} onChange={(event) => setEnd(event.target.value)} required />
+              <input
+                className="field"
+                type="date"
+                aria-label={`End for ${row.teacherName}`}
+                value={end}
+                onChange={(event) => setEnd(event.target.value)}
+                required
+              />
             </label>
           </>
         ) : null}

@@ -41,6 +41,7 @@ export type SessionView = {
 export type DirectoryRow = {
   teacherId: string;
   teacherName: string;
+  designation?: string;
   username: string | null;
   storedRole: StoredRole;
   role: AppRole;
