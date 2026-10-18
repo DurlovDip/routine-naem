@@ -7,7 +7,8 @@ import { createInitialState } from "./lib/demo";
 import { scheduleReducer, type Action } from "./lib/reducer";
 import { activeDay } from "./lib/schedule";
 import { normalizeState } from "./lib/storage";
-import { loadRemoteSchedule, subscribeToRemoteSchedule, upsertRemoteSchedule } from "./lib/supabase";
+import { BUILTIN_DESIGNATIONS } from "./lib/designations";
+import { loadRemoteSchedule, subscribeToRemoteSchedule, upsertRemoteSchedule, type RemoteLoad } from "./lib/supabase";
 import type { AppState, DayPlan } from "./lib/types";
 
 const CACHE_KEY = "routine-naem-schedule-cache";
@@ -20,6 +21,8 @@ type Store = {
   day: DayPlan;
   hydrated: boolean;
   syncStatus: SyncStatus;
+  syncError: string | null;
+  designations: string[];
   lastSyncedAt: Date | null;
   refreshFromCloud: () => Promise<void>;
 };
@@ -35,6 +38,8 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   );
   const [hydrated, setHydrated] = useState(screenshotMode);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(screenshotMode ? "local" : "connected");
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [designations, setDesignations] = useState<string[]>([...BUILTIN_DESIGNATIONS]);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const skipCloudSave = useRef(false);
   const cloudReady = useRef(screenshotMode);
@@ -45,7 +50,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   stateRef.current = state;
 
   const role = auth.session?.role;
-  const realSession = Boolean(auth.session && auth.session.userId !== "hardcoded-superadmin");
+  const realSession = Boolean(auth.session);
   const canWrite =
     realSession && (role === "super_admin" || role === "coordinator" || role === "temp_coordinator");
   const canWriteCatalog = realSession && role === "super_admin";
@@ -89,6 +94,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       remoteApplied.current = false;
       dispatch({ type: "replace", state: createInitialState() });
       void AsyncStorage.removeItem(CACHE_KEY);
+      setSyncError(null);
       setSyncStatus("local");
     }
     prevUser.current = id;
@@ -100,59 +106,84 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "replace", state: next });
   }, []);
 
+  const noteRemote = useCallback((remote: RemoteLoad) => {
+    setDesignations(remote.designations);
+    if (remote.state && !dirtyDuringLoad.current) applyRemote(remote.state);
+    if (remote.error || !remote.state) {
+      setSyncError(remote.error ?? "No schedule was returned.");
+      setSyncStatus("error");
+      return false;
+    }
+    setSyncError(null);
+    setSyncStatus("connected");
+    setLastSyncedAt(new Date());
+    return true;
+  }, [applyRemote]);
+
+  const publish = useCallback(async () => {
+    const result = await upsertRemoteSchedule(stateRef.current, { catalogs: canWriteCatalog });
+    setSyncStatus(result.ok ? "connected" : "error");
+    setSyncError(result.error);
+    if (result.ok) setLastSyncedAt(new Date());
+    return result.ok;
+  }, [canWriteCatalog]);
+
   const refreshFromCloud = useCallback(async () => {
     if (!realSession || screenshotMode) return;
     setSyncStatus("saving");
     const remote = await loadRemoteSchedule();
-    if (remote.error || !remote.state) {
+    if (remote.error && !remote.state) {
+      setDesignations(remote.designations);
+      setSyncError(remote.error);
       setSyncStatus("error");
       return;
     }
-    applyRemote(remote.state);
-    setSyncStatus("connected");
-    setLastSyncedAt(new Date());
-  }, [realSession, applyRemote]);
+    noteRemote(remote);
+  }, [realSession, noteRemote]);
 
   useEffect(() => {
-    if (!hydrated || !auth.ready || !realSession || screenshotMode) {
-      if (auth.ready && auth.session && !realSession) setSyncStatus("local");
-      return;
-    }
+    if (!hydrated || !auth.ready || !realSession || screenshotMode) return;
     let mounted = true;
     void (async () => {
       setSyncStatus("saving");
       const remote = await loadRemoteSchedule();
       if (!mounted) return;
-      cloudReady.current = true;
-      if (remote.error) {
+      setDesignations(remote.designations);
+      if (remote.error && !remote.state) {
+        setSyncError(remote.error);
         setSyncStatus("error");
         return;
       }
+      cloudReady.current = true;
       if (dirtyDuringLoad.current) {
-        const ok = await upsertRemoteSchedule(stateRef.current, { catalogs: canWriteCatalog });
-        if (!mounted) return;
-        setSyncStatus(ok ? "connected" : "error");
-        if (ok) setLastSyncedAt(new Date());
+        if (mounted) await publish();
         return;
       }
       if (remote.state) {
         applyRemote(remote.state);
-        setSyncStatus("connected");
-        setLastSyncedAt(new Date());
+        if (!mounted) return;
+        setSyncError(remote.error);
+        setSyncStatus(remote.error ? "error" : "connected");
+        if (!remote.error) setLastSyncedAt(new Date());
         return;
       }
       if (canWrite) {
-        const ok = await upsertRemoteSchedule(stateRef.current, { catalogs: canWriteCatalog });
-        if (!mounted) return;
-        setSyncStatus(ok ? "connected" : "error");
-        if (ok) setLastSyncedAt(new Date());
+        if (mounted) await publish();
         return;
       }
+      setSyncError(null);
       setSyncStatus("connected");
     })();
-    const unsubscribe = subscribeToRemoteSchedule((remoteState) => {
-      if (!mounted) return;
-      applyRemote(remoteState);
+    const unsubscribe = subscribeToRemoteSchedule((remote) => {
+      if (!mounted || dirtyDuringLoad.current) return;
+      setDesignations(remote.designations);
+      if (remote.state) applyRemote(remote.state);
+      if (remote.error || !remote.state) {
+        setSyncError(remote.error ?? "No schedule was returned.");
+        setSyncStatus("error");
+        return;
+      }
+      setSyncError(null);
       setSyncStatus("connected");
       setLastSyncedAt(new Date());
     });
@@ -160,7 +191,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       mounted = false;
       unsubscribe?.();
     };
-  }, [hydrated, auth.ready, realSession, auth.session?.userId, canWrite, canWriteCatalog, applyRemote]);
+  }, [hydrated, auth.ready, realSession, auth.session?.userId, canWrite, applyRemote, publish]);
 
   const hydratedStateSeen = useRef(false);
   useEffect(() => {
@@ -182,16 +213,13 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     dirtyDuringLoad.current = false;
     setSyncStatus("saving");
     const timer = setTimeout(() => {
-      void upsertRemoteSchedule(stateRef.current, { catalogs: canWriteCatalog }).then((ok) => {
-        setSyncStatus(ok ? "connected" : "error");
-        if (ok) setLastSyncedAt(new Date());
-      });
+      void publish();
     }, 600);
     return () => clearTimeout(timer);
-  }, [state, hydrated, canWrite, canWriteCatalog]);
+  }, [state, hydrated, canWrite, publish]);
 
   return (
-    <ScheduleContext.Provider value={{ state, dispatch, day, hydrated, syncStatus, lastSyncedAt, refreshFromCloud }}>
+    <ScheduleContext.Provider value={{ state, dispatch, day, hydrated, syncStatus, syncError, designations, lastSyncedAt, refreshFromCloud }}>
       {children}
     </ScheduleContext.Provider>
   );

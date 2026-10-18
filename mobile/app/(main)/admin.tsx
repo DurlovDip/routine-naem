@@ -6,7 +6,8 @@ import { addModuleEntry, withModules } from "../../src/catalog";
 import { roleLabel, type StoredRole } from "../../src/lib/roles";
 import { cleanBatchNumber, formatModuleCode, normalizeModuleNumber, normalizeSubNumber } from "../../src/lib/text";
 import { isIsoDate } from "../../src/lib/time";
-import { STANDARD_DESIGNATIONS, type ModuleEntry, type Teacher } from "../../src/lib/types";
+import { designationChoices } from "../../src/lib/designations";
+import { type ModuleEntry, type Teacher } from "../../src/lib/types";
 import { useSchedule } from "../../src/store";
 import { colors } from "../../src/theme";
 import { Button, Field, Label, Segmented, Select, T } from "../../src/ui";
@@ -43,9 +44,10 @@ export default function AdminScreen() {
 }
 
 function TeachersPanel() {
-  const { state, dispatch } = useSchedule();
+  const { state, dispatch, designations } = useSchedule();
   const [name, setName] = useState("");
   const [designation, setDesignation] = useState<string>("Assistant Director");
+  const choices = designationChoices(designations, [designation]);
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 28 }} keyboardShouldPersistTaps="handled">
       <T style={{ color: colors.muted, fontSize: 12 }}>Names and designations saved with the teacher list.</T>
@@ -59,7 +61,7 @@ function TeachersPanel() {
         <Select
           label="Designation"
           value={designation}
-          options={["", ...STANDARD_DESIGNATIONS]}
+          options={["", ...choices]}
           placeholder="No designation"
           onChange={setDesignation}
         />
@@ -79,11 +81,10 @@ function TeachersPanel() {
 }
 
 function TeacherRow({ teacher }: { teacher: Teacher }) {
-  const { dispatch } = useSchedule();
+  const { dispatch, designations } = useSchedule();
   const [name, setName] = useState(teacher.name);
   useEffect(() => setName(teacher.name), [teacher.name]);
-  const options = [...STANDARD_DESIGNATIONS] as string[];
-  if (teacher.designation && !options.includes(teacher.designation)) options.push(teacher.designation);
+  const options = designationChoices(designations, [teacher.designation]);
   return (
     <View style={card}>
       <Field

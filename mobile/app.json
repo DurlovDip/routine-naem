@@ -3,7 +3,7 @@
     "name": "Daily Schedule",
     "slug": "routine-naem",
     "scheme": "routine-naem",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "bd.naem.routine",
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#3f5c4e",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -27,7 +28,7 @@
     },
     "plugins": [
       "expo-router",
-      "expo-font",
+      ["expo-font", { "fonts": ["./assets/fonts/Ionicons.ttf"] }],
       "expo-sharing",
       "expo-status-bar"
     ]

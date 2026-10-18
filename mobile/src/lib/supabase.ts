@@ -1,6 +1,7 @@
 import "react-native-url-polyfill/auto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { BUILTIN_DESIGNATIONS, designationChoices } from "./designations";
 import { createDemoState } from "./demo";
 import { catalogFromModules, formatModuleCode, parseModuleCode, rosterRange } from "./text";
 import { normalizeState } from "./storage";
@@ -27,120 +28,148 @@ export const SCHEDULE_TABLE = "schedules";
 export const TEACHERS_TABLE = "teachers";
 export const MODULES_TABLE = "modules";
 export const BATCHES_TABLE = "batches";
+export const DESIGNATIONS_TABLE = "designations";
+
+export type RemoteLoad = {
+  state: AppState | null;
+  error: string | null;
+  designations: string[];
+  designationError: string | null;
+};
+
+type QueryError = { message: string } | null;
+
+function problem(label: string, error: QueryError): string | null {
+  return error ? `${label}: ${error.message}` : null;
+}
+
+function mapModules(rows: Array<{
+  id: number | string;
+  module_number?: string | number;
+  module_subnumber?: string | number;
+  module_name?: string;
+}>): ModuleEntry[] {
+  return rows.map((row) => {
+    const id = String(row.id);
+    const mNum = row.module_number !== undefined ? String(row.module_number).replace(/^M-\s*/i, "").trim() : "";
+    const sNum = row.module_subnumber !== undefined ? String(row.module_subnumber).replace(/^\./, "").trim() : "";
+    const name = row.module_name !== undefined ? (row.module_name ?? "") : "";
+    return {
+      id,
+      moduleNumber: mNum,
+      moduleSubnumber: sNum,
+      moduleName: name,
+      code: formatModuleCode(mNum, sNum),
+      title: name,
+    };
+  });
+}
+
+function mapBatches(rows: Array<{ id: number | string; name: string; number_of_students?: number }>): Batch[] {
+  return rows.map((row) => {
+    const num = typeof row.id === "number" ? row.id : parseInt(String(row.id).replace(/\D/g, ""), 10) || 1;
+    const count = typeof row.number_of_students === "number" ? row.number_of_students : 40;
+    return {
+      id: `batch-${num}`,
+      name: row.name ?? "",
+      numberOfStudents: count,
+      roster: rosterRange(1, count),
+    };
+  });
+}
 
 /**
- * Fetch remote state from Supabase, integrating relational tables
- * (teachers, modules, batches) with the main schedule document.
+ * Fetch the schedule document and the relational tables.
+ * A failed table is reported and does not discard data that did load.
+ * Empty batches or modules tables keep the copies stored in schedules.data.
  */
-export async function loadRemoteSchedule(): Promise<{ state: AppState | null; error: string | null }> {
-  if (!supabase) return { state: null, error: null };
+export async function loadRemoteSchedule(): Promise<RemoteLoad> {
+  const fallbackDesignations: string[] = [...BUILTIN_DESIGNATIONS];
   try {
-    const schedulePromise = supabase.from(SCHEDULE_TABLE).select("data").eq("id", SCHEDULE_ROW_ID).maybeSingle();
-    const modulesPromise = supabase.from(MODULES_TABLE).select("id, module_number, module_subnumber, module_name").order("id");
-    const batchesPromise = supabase.from(BATCHES_TABLE).select("id, name, number_of_students").order("id");
+    const [scheduleRes, teachersFirst, modulesRes, batchesRes, designationsRes] = await Promise.all([
+      supabase.from(SCHEDULE_TABLE).select("data").eq("id", SCHEDULE_ROW_ID).maybeSingle(),
+      supabase.from(TEACHERS_TABLE).select("id, name, designation").order("name"),
+      supabase.from(MODULES_TABLE).select("id, module_number, module_subnumber, module_name").order("id"),
+      supabase.from(BATCHES_TABLE).select("id, name, number_of_students").order("id"),
+      supabase.from(DESIGNATIONS_TABLE).select("id, name").order("name"),
+    ]);
 
     let teachersRes: {
       data: Array<{ id: string; name: string; designation?: string }> | null;
-      error: { message: string } | null;
-    } = await supabase.from(TEACHERS_TABLE).select("id, name, designation").order("name");
-    if (teachersRes.error && teachersRes.error.message.includes("designation")) {
+      error: QueryError;
+    } = teachersFirst;
+    if (teachersRes.error && /designation/i.test(teachersRes.error.message)) {
       const fallback = await supabase.from(TEACHERS_TABLE).select("id, name").order("name");
       teachersRes = {
-        data: fallback.data ? (fallback.data as Array<{ id: string; name: string }>).map((r) => ({ id: r.id, name: r.name, designation: "" })) : null,
-        error: fallback.error ? { message: fallback.error.message } : null,
+        data: fallback.data
+          ? (fallback.data as Array<{ id: string; name: string }>).map((row) => ({ ...row, designation: "" }))
+          : null,
+        error: fallback.error,
       };
     }
 
-    const [scheduleRes, modulesRes, batchesRes] = await Promise.all([
-      schedulePromise,
-      modulesPromise,
-      batchesPromise,
-    ]);
+    const problems = [
+      problem("Schedule", scheduleRes.error),
+      problem("Teachers", teachersRes.error),
+      problem("Modules", modulesRes.error),
+      problem("Batches", batchesRes.error),
+    ].filter((item): item is string => Boolean(item));
 
-    const failure = scheduleRes.error || teachersRes.error || modulesRes.error || batchesRes.error;
-    if (failure) {
-      console.warn("Supabase read failed:", failure.message);
-      return { state: null, error: failure.message };
+    let designationError: string | null = null;
+    let designations = fallbackDesignations;
+    if (designationsRes.error) {
+      designationError = `Designations: ${designationsRes.error.message}`;
+      problems.push(designationError);
+    } else if (designationsRes.data && designationsRes.data.length > 0) {
+      const names = designationsRes.data.map((row) => String((row as { name?: string }).name ?? "").trim()).filter(Boolean);
+      if (names.length > 0) designations = names;
     }
 
     let baseState: AppState | null = null;
-    if (scheduleRes.data && scheduleRes.data.data) {
+    if (!scheduleRes.error && scheduleRes.data?.data) {
       baseState = normalizeState(scheduleRes.data.data);
+      if (!baseState) problems.push("Schedule: saved data could not be read.");
     }
 
-    const hasRelational = Boolean(
-      (teachersRes.data && teachersRes.data.length > 0) ||
-      (modulesRes.data && modulesRes.data.length > 0) ||
-      (batchesRes.data && batchesRes.data.length > 0)
-    );
+    const teachers =
+      !teachersRes.error && teachersRes.data && teachersRes.data.length > 0
+        ? teachersRes.data.map(
+            (row): Teacher => ({
+              id: row.id,
+              name: row.name,
+              designation: row.designation || "",
+            }),
+          )
+        : null;
+    const modules = !modulesRes.error && modulesRes.data && modulesRes.data.length > 0 ? mapModules(modulesRes.data) : null;
+    const batches = !batchesRes.error && batchesRes.data && batchesRes.data.length > 0 ? mapBatches(batchesRes.data) : null;
 
-    if (!baseState) {
-      if (!hasRelational) return { state: null, error: null };
+    if (!baseState && (teachers || modules || batches)) {
       baseState = createDemoState();
     }
 
-    // Merge relational teachers
-    if (teachersRes.data && teachersRes.data.length > 0) {
-      baseState.teachers = teachersRes.data.map((row: { id: string; name: string; designation?: string }): Teacher => ({
-        id: row.id,
-        name: row.name,
-        designation: row.designation || "",
-      }));
+    if (baseState) {
+      if (teachers) baseState.teachers = teachers;
+      if (modules) {
+        baseState.modules = modules;
+        const catalog = catalogFromModules(baseState.modules);
+        baseState.moduleNumbers = catalog.moduleNumbers;
+        baseState.subNumbers = catalog.subNumbers;
+      }
+      if (batches) baseState.batches = batches;
+      designations = designationChoices(
+        designations,
+        baseState.teachers.map((teacher) => teacher.designation),
+      );
     }
 
-    // Merge relational modules
-    if (modulesRes.data && modulesRes.data.length > 0) {
-      baseState.modules = modulesRes.data.map((row: {
-        id: number | string;
-        module_number?: string | number;
-        module_subnumber?: string | number;
-        module_name?: string;
-      }): ModuleEntry => {
-        const id = String(row.id);
-        const mNum = row.module_number !== undefined
-          ? String(row.module_number).replace(/^M-\s*/i, "").trim()
-          : "";
-        const sNum = row.module_subnumber !== undefined
-          ? String(row.module_subnumber).replace(/^\./, "").trim()
-          : "";
-        const name = row.module_name !== undefined ? (row.module_name ?? "") : "";
-        const code = formatModuleCode(mNum, sNum);
-        return {
-          id,
-          moduleNumber: mNum,
-          moduleSubnumber: sNum,
-          moduleName: name,
-          code,
-          title: name,
-        };
-      });
-      const catalog = catalogFromModules(baseState.modules);
-      baseState.moduleNumbers = catalog.moduleNumbers;
-      baseState.subNumbers = catalog.subNumbers;
-    }
-
-    // Merge relational batches
-    if (batchesRes.data && batchesRes.data.length > 0) {
-      baseState.batches = batchesRes.data.map((row: {
-        id: number | string;
-        name: string;
-        number_of_students?: number;
-      }): Batch => {
-        const num = typeof row.id === "number" ? row.id : parseInt(String(row.id).replace(/\D/g, ""), 10) || 1;
-        const count = typeof row.number_of_students === "number" ? row.number_of_students : 40;
-        return {
-          id: `batch-${num}`,
-          name: row.name ?? "",
-          numberOfStudents: count,
-          roster: rosterRange(1, count),
-        };
-      });
-    }
-
-    return { state: baseState, error: null };
+    const error = problems.length > 0 ? problems.join("\n") : null;
+    if (error) console.warn("Supabase read:", error);
+    return { state: baseState, error, designations, designationError };
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.warn("Failed to connect to Supabase:", err);
-    return { state: null, error: err instanceof Error ? err.message : String(err) };
+    return { state: null, error: message, designations: fallbackDesignations, designationError: message };
   }
 }
 
@@ -149,8 +178,7 @@ export async function fetchRemoteSchedule(): Promise<AppState | null> {
   return result.state;
 }
 
-async function syncTeachers(teachers: Teacher[], timestamp: string) {
-  if (!supabase) return;
+async function syncTeachers(teachers: Teacher[], timestamp: string): Promise<string | null> {
   if (teachers.length > 0) {
     const rows = teachers.map((t) => ({
       id: t.id,
@@ -165,22 +193,27 @@ async function syncTeachers(teachers: Teacher[], timestamp: string) {
         name: t.name,
         updated_at: timestamp,
       }));
-      await supabase.from(TEACHERS_TABLE).upsert(fallbackRows, { onConflict: "id" });
+      const { error: fallbackErr } = await supabase.from(TEACHERS_TABLE).upsert(fallbackRows, { onConflict: "id" });
+      if (fallbackErr) return `Teachers: ${fallbackErr.message}`;
+    } else if (upsertErr) {
+      return `Teachers: ${upsertErr.message}`;
     }
   }
 
   const { data: remoteRows, error } = await supabase.from(TEACHERS_TABLE).select("id");
-  if (!error && remoteRows) {
+  if (error) return `Teachers: ${error.message}`;
+  if (remoteRows) {
     const activeIds = new Set(teachers.map((t) => t.id));
     const toDelete = remoteRows.map((r: { id: string }) => r.id).filter((id) => !activeIds.has(id));
     if (toDelete.length > 0) {
-      await supabase.from(TEACHERS_TABLE).delete().in("id", toDelete);
+      const { error: deleteErr } = await supabase.from(TEACHERS_TABLE).delete().in("id", toDelete);
+      if (deleteErr) return `Teachers: ${deleteErr.message}`;
     }
   }
+  return null;
 }
 
-async function syncModules(modules: ModuleEntry[], timestamp: string) {
-  if (!supabase) return;
+async function syncModules(modules: ModuleEntry[], timestamp: string): Promise<string | null> {
   if (modules.length > 0) {
     const rows = modules.map((m, index) => {
       const numId = parseInt(m.id.replace(/\D/g, ""), 10) || (index + 1);
@@ -196,11 +229,13 @@ async function syncModules(modules: ModuleEntry[], timestamp: string) {
         updated_at: timestamp,
       };
     });
-    await supabase.from(MODULES_TABLE).upsert(rows, { onConflict: "id" });
+    const { error: upsertErr } = await supabase.from(MODULES_TABLE).upsert(rows, { onConflict: "id" });
+    if (upsertErr) return `Modules: ${upsertErr.message}`;
   }
 
   const { data: remoteRows, error } = await supabase.from(MODULES_TABLE).select("id");
-  if (!error && remoteRows) {
+  if (error) return `Modules: ${error.message}`;
+  if (remoteRows) {
     const activeNumIds = new Set(
       modules.map((m, idx) => parseInt(m.id.replace(/\D/g, ""), 10) || (idx + 1)),
     );
@@ -208,13 +243,14 @@ async function syncModules(modules: ModuleEntry[], timestamp: string) {
       .map((r: { id: number }) => r.id)
       .filter((id) => !activeNumIds.has(id));
     if (toDelete.length > 0) {
-      await supabase.from(MODULES_TABLE).delete().in("id", toDelete);
+      const { error: deleteErr } = await supabase.from(MODULES_TABLE).delete().in("id", toDelete);
+      if (deleteErr) return `Modules: ${deleteErr.message}`;
     }
   }
+  return null;
 }
 
-async function syncBatches(batches: Batch[], timestamp: string) {
-  if (!supabase) return;
+async function syncBatches(batches: Batch[], timestamp: string): Promise<string | null> {
   if (batches.length > 0) {
     const rows = batches.map((b, index) => {
       const numId = parseInt(b.id.replace(/\D/g, ""), 10) || (index + 1);
@@ -225,11 +261,13 @@ async function syncBatches(batches: Batch[], timestamp: string) {
         updated_at: timestamp,
       };
     });
-    await supabase.from(BATCHES_TABLE).upsert(rows, { onConflict: "id" });
+    const { error: upsertErr } = await supabase.from(BATCHES_TABLE).upsert(rows, { onConflict: "id" });
+    if (upsertErr) return `Batches: ${upsertErr.message}`;
   }
 
   const { data: remoteRows, error } = await supabase.from(BATCHES_TABLE).select("id");
-  if (!error && remoteRows) {
+  if (error) return `Batches: ${error.message}`;
+  if (remoteRows) {
     const activeNumIds = new Set(
       batches.map((b, idx) => parseInt(b.id.replace(/\D/g, ""), 10) || (idx + 1)),
     );
@@ -237,9 +275,11 @@ async function syncBatches(batches: Batch[], timestamp: string) {
       .map((r: { id: number }) => r.id)
       .filter((id) => !activeNumIds.has(id));
     if (toDelete.length > 0) {
-      await supabase.from(BATCHES_TABLE).delete().in("id", toDelete);
+      const { error: deleteErr } = await supabase.from(BATCHES_TABLE).delete().in("id", toDelete);
+      if (deleteErr) return `Batches: ${deleteErr.message}`;
     }
   }
+  return null;
 }
 
 /**
@@ -250,42 +290,42 @@ async function syncBatches(batches: Batch[], timestamp: string) {
 export async function upsertRemoteSchedule(
   state: AppState,
   options: { catalogs?: boolean } = {},
-): Promise<boolean> {
-  if (!supabase) return false;
+): Promise<{ ok: boolean; error: string | null }> {
   try {
     const now = new Date().toISOString();
     const catalogs = options.catalogs !== false;
+    const skipped: Promise<string | null> = Promise.resolve(null);
 
-    const schedulePromise = supabase.from(SCHEDULE_TABLE).upsert(
-      {
-        id: SCHEDULE_ROW_ID,
-        data: state,
-        updated_at: now,
-      },
-      { onConflict: "id" },
-    );
-
-    const [scheduleRes] = await Promise.all([
-      schedulePromise,
-      catalogs
-        ? syncTeachers(state.teachers, now).catch((err) => console.warn("Sync teachers failed:", err))
-        : Promise.resolve(),
-      catalogs
-        ? syncModules(state.modules, now).catch((err) => console.warn("Sync modules failed:", err))
-        : Promise.resolve(),
-      catalogs
-        ? syncBatches(state.batches, now).catch((err) => console.warn("Sync batches failed:", err))
-        : Promise.resolve(),
+    const [scheduleRes, teachersError, modulesError, batchesError] = await Promise.all([
+      supabase.from(SCHEDULE_TABLE).upsert(
+        {
+          id: SCHEDULE_ROW_ID,
+          data: state,
+          updated_at: now,
+        },
+        { onConflict: "id" },
+      ),
+      catalogs ? syncTeachers(state.teachers, now) : skipped,
+      catalogs ? syncModules(state.modules, now) : skipped,
+      catalogs ? syncBatches(state.batches, now) : skipped,
     ]);
 
-    if (scheduleRes.error) {
-      console.error("Error saving schedule to Supabase:", scheduleRes.error.message);
-      return false;
+    const problems = [
+      scheduleRes.error ? `Schedule: ${scheduleRes.error.message}` : null,
+      teachersError,
+      modulesError,
+      batchesError,
+    ].filter((item): item is string => Boolean(item));
+    if (problems.length > 0) {
+      const error = problems.join("\n");
+      console.error("Error saving schedule to Supabase:", error);
+      return { ok: false, error };
     }
-    return true;
+    return { ok: true, error: null };
   } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
     console.error("Failed to upload schedule to Supabase:", err);
-    return false;
+    return { ok: false, error };
   }
 }
 
@@ -293,7 +333,7 @@ export async function upsertRemoteSchedule(
  * Subscribes to real-time changes across schedules, teachers, modules, and batches tables.
  */
 export function subscribeToRemoteSchedule(
-  onUpdate: (state: AppState) => void,
+  onUpdate: (result: RemoteLoad) => void,
 ): (() => void) | null {
   if (!supabase) return null;
 
@@ -309,8 +349,7 @@ export function subscribeToRemoteSchedule(
           filter: `id=eq.${SCHEDULE_ROW_ID}`,
         },
         async () => {
-          const latest = await fetchRemoteSchedule();
-          if (latest) onUpdate(latest);
+          onUpdate(await loadRemoteSchedule());
         },
       )
       .on(
@@ -321,8 +360,7 @@ export function subscribeToRemoteSchedule(
           table: TEACHERS_TABLE,
         },
         async () => {
-          const latest = await fetchRemoteSchedule();
-          if (latest) onUpdate(latest);
+          onUpdate(await loadRemoteSchedule());
         },
       )
       .on(
@@ -333,8 +371,7 @@ export function subscribeToRemoteSchedule(
           table: MODULES_TABLE,
         },
         async () => {
-          const latest = await fetchRemoteSchedule();
-          if (latest) onUpdate(latest);
+          onUpdate(await loadRemoteSchedule());
         },
       )
       .on(
@@ -345,8 +382,7 @@ export function subscribeToRemoteSchedule(
           table: BATCHES_TABLE,
         },
         async () => {
-          const latest = await fetchRemoteSchedule();
-          if (latest) onUpdate(latest);
+          onUpdate(await loadRemoteSchedule());
         },
       )
       .subscribe();
