@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Daily Schedule",
+    "slug": "routine-naem",
+    "scheme": "routine-naem",
+    "version": "1.0.1",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "bd.naem.routine"
+    },
+    "android": {
+      "package": "bd.naem.routine",
+      "versionCode": 2,
+      "adaptiveIcon": {
+        "backgroundColor": "#3f5c4e",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      ["expo-font", { "fonts": ["./assets/fonts/Ionicons.ttf"] }],
+      "expo-sharing",
+      "expo-status-bar"
+    ]
+  }
+}
