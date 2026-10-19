@@ -76,7 +76,7 @@ export function PeopleSection() {
   return (
     <div className="access-panel" id="people-panel">
       <p className="hint">
-        Assign coordinator or temporary coordinator for a date range. Outside that range the account acts as a teacher. A super admin has no dates. Name and designation save when you leave the field.
+        Assign coordinator or temporary coordinator for a date range. Outside that range the person acts as a teacher. A super admin has no dates. Name and designation save when you leave the field. Reset PIN sets a new 4-digit PIN for that teacher.
       </p>
       {notice ? (
         <p className="auth-error" id="roles-notice">
@@ -103,6 +103,12 @@ export function PeopleSection() {
                 setError(null);
                 await load();
               }
+            }}
+            onResetPin={async (nextPin) => {
+              const message = await auth.adminResetPin(row.teacherId, nextPin);
+              if (message) setError(message);
+              else setError(null);
+              return message;
             }}
           />
         ))}
@@ -150,16 +156,66 @@ function blurOnEnter(event: KeyboardEvent<HTMLInputElement>) {
   }
 }
 
+function PinReset({
+  teacherName,
+  onReset,
+}: {
+  teacherName: string;
+  onReset: (pin: string) => Promise<string | null>;
+}) {
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
+  return (
+    <div className="role-form">
+      <label>
+        <span className="field-label">New PIN</span>
+        <input
+          className="field"
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={4}
+          aria-label={`New PIN for ${teacherName}`}
+          value={pin}
+          onChange={(event) => {
+            setNote(null);
+            setPin(event.target.value.replace(/\D/g, "").slice(0, 4));
+          }}
+        />
+      </label>
+      <Button
+        tone="primary"
+        disabled={busy || pin.length !== 4}
+        onClick={() => {
+          setBusy(true);
+          void onReset(pin).then((message) => {
+            setBusy(false);
+            if (!message) {
+              setNote("PIN reset.");
+              setPin("");
+            }
+          });
+        }}
+      >
+        {busy ? "Saving…" : "Reset PIN"}
+      </Button>
+      {note ? <span className="hint">{note}</span> : null}
+    </div>
+  );
+}
+
 function RoleRow({
   row,
   busy,
   onSave,
   onSaveProfile,
+  onResetPin,
 }: {
   row: DirectoryRow;
   busy: boolean;
   onSave: (role: Assignable, start: string | null, end: string | null) => Promise<void>;
   onSaveProfile: (teacherId: string, patch: { name?: string; designation?: string }) => Promise<string | null>;
+  onResetPin: (pin: string) => Promise<string | null>;
 }) {
   const initial = row.storedRole === "super_admin" ? "teacher" : row.storedRole;
   const [role, setRole] = useState<Assignable>(initial);
@@ -215,9 +271,10 @@ function RoleRow({
       <li className="account-row role-row">
         <div>
           <strong>{row.teacherName}</strong>
-          <span className="hint">{row.username ? `@${row.username}` : "No account yet"} · Super admin</span>
+          <span className="hint">PIN sign-in · Super admin</span>
         </div>
         {identity}
+        <PinReset teacherName={row.teacherName} onReset={onResetPin} />
       </li>
     );
   }
@@ -227,7 +284,7 @@ function RoleRow({
       <div>
         <strong>{row.teacherName}</strong>
         <span className="hint">
-          {row.username ? `@${row.username}` : "No account yet"} · {activeNote}
+          PIN sign-in · {activeNote}
         </span>
       </div>
       <div className="role-form">
@@ -290,6 +347,7 @@ function RoleRow({
           Save role
         </Button>
       </div>
+      <PinReset teacherName={row.teacherName} onReset={onResetPin} />
     </li>
   );
 }

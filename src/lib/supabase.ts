@@ -167,14 +167,14 @@ async function syncTeachers(teachers: Teacher[], timestamp: string) {
       designation: t.designation || "",
       updated_at: timestamp,
     }));
-    const { error: upsertErr } = await supabase.from(TEACHERS_TABLE).upsert(rows, { onConflict: "id" });
+    const { error: upsertErr } = await supabase.from(TEACHERS_TABLE).upsert(rows, { onConflict: "id" }).select("id");
     if (upsertErr && upsertErr.message.includes("designation")) {
       const fallbackRows = teachers.map((t) => ({
         id: t.id,
         name: t.name,
         updated_at: timestamp,
       }));
-      await supabase.from(TEACHERS_TABLE).upsert(fallbackRows, { onConflict: "id" });
+      await supabase.from(TEACHERS_TABLE).upsert(fallbackRows, { onConflict: "id" }).select("id");
     }
   }
 
@@ -429,10 +429,10 @@ export async function restoreRecordFromBackup(
       if (!id || !name) return { success: false, message: "Missing teacher id or name in backup." };
 
       const designation = String(d.designation || "");
-      const { error } = await supabase.from(TEACHERS_TABLE).upsert(
-        { id, name, ...(designation ? { designation } : {}), updated_at: now },
-        { onConflict: "id" },
-      );
+      const { error } = await supabase
+        .from(TEACHERS_TABLE)
+        .upsert({ id, name, ...(designation ? { designation } : {}), updated_at: now }, { onConflict: "id" })
+        .select("id");
       if (error) throw error;
       return { success: true, message: `Restored teacher "${name}" (${id})` };
     }

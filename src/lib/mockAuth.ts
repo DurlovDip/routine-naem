@@ -1,9 +1,9 @@
 import {
+  DEFAULT_PIN,
   effectiveRole,
-  normalizeUsername,
+  pinError,
   syntheticEmail,
   todayIso,
-  usernameError,
   type AppRole,
   type StoredRole,
 } from "./roles";
@@ -15,7 +15,7 @@ type MockTeacher = {
   name: string;
   authUserId: string | null;
   username: string | null;
-  password: string | null;
+  pin: string;
   designation: string;
   role: StoredRole;
   roleStart: string | null;
@@ -70,18 +70,84 @@ const previewTeachers = [
   "Dr. Litan Kanti Halder",
 ];
 
+const memoryStore = new Map<string, string>();
+
+function storageGet(key: string): string | null {
+  try {
+    if (typeof localStorage !== "undefined") return localStorage.getItem(key);
+  } catch {
+    // Node tests and private windows fall through to memory.
+  }
+  return memoryStore.get(key) ?? null;
+}
+
+function storageSet(key: string, value: string) {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(key, value);
+      return;
+    }
+  } catch {
+    // Fall through.
+  }
+  memoryStore.set(key, value);
+}
+
+function storageRemove(key: string) {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.removeItem(key);
+  } catch {
+    // Fall through.
+  }
+  memoryStore.delete(key);
+}
+
 function seedTeachers(): MockTeacher[] {
-  return previewTeachers.map((name, index) => ({
+  const rows: MockTeacher[] = previewTeachers.map((name, index) => ({
     id: `teacher-${index + 1}`,
     name,
-    authUserId: null,
-    username: null,
-    password: null,
+    authUserId: `user-teacher-${index + 1}`,
+    username: `teacher-${index + 1}`,
+    pin: DEFAULT_PIN,
     designation: "",
     role: "teacher" as const,
     roleStart: null,
     roleEnd: null,
   }));
+  rows.push({
+    id: "superadmin",
+    name: "Super Admin",
+    authUserId: "user-superadmin",
+    username: "superadmin",
+    pin: DEFAULT_PIN,
+    designation: "",
+    role: "super_admin",
+    roleStart: null,
+    roleEnd: null,
+  });
+  return rows;
+}
+
+function asRole(value: unknown): StoredRole {
+  if (value === "super_admin" || value === "coordinator" || value === "temp_coordinator" || value === "teacher") {
+    return value;
+  }
+  return "teacher";
+}
+
+function normalizeTeacher(row: Partial<MockTeacher>, index: number): MockTeacher {
+  const id = row.id ?? `teacher-${index + 1}`;
+  return {
+    id,
+    name: row.name ?? "Teacher",
+    authUserId: row.authUserId ?? `user-${id}`,
+    username: row.username ?? id,
+    pin: row.pin && /^[0-9]{4}$/.test(row.pin) ? row.pin : DEFAULT_PIN,
+    designation: row.designation ?? "",
+    role: asRole(row.role),
+    roleStart: row.roleStart ?? null,
+    roleEnd: row.roleEnd ?? null,
+  };
 }
 
 function emptyDb(): MockDb {
@@ -90,10 +156,10 @@ function emptyDb(): MockDb {
 
 function readDb(): MockDb {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = storageGet(STORAGE_KEY);
     if (!raw) return emptyDb();
     const parsed = JSON.parse(raw) as Partial<MockDb>;
-    const teachers = Array.isArray(parsed.teachers) ? parsed.teachers : seedTeachers();
+    const teachers = Array.isArray(parsed.teachers) ? parsed.teachers.map(normalizeTeacher) : seedTeachers();
     return { teachers, sessionUserId: parsed.sessionUserId ?? null };
   } catch {
     return emptyDb();
@@ -101,15 +167,16 @@ function readDb(): MockDb {
 }
 
 function writeDb(db: MockDb) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+  storageSet(STORAGE_KEY, JSON.stringify(db));
 }
 
 function toSession(teacher: MockTeacher): SessionView {
   const today = todayIso();
+  const username = teacher.username ?? teacher.id;
   return {
     userId: teacher.authUserId ?? "",
-    username: teacher.username ?? "",
-    email: syntheticEmail(teacher.username ?? ""),
+    username,
+    email: syntheticEmail(username),
     teacherId: teacher.id,
     teacherName: teacher.name,
     storedRole: teacher.role,
@@ -140,60 +207,45 @@ export function mockSignOut() {
   writeDb(db);
 }
 
-export function mockUnclaimed(): { id: string; name: string }[] {
+export function mockSignInTeachers(): { id: string; name: string }[] {
   return readDb()
-    .teachers.filter((teacher) => !teacher.authUserId)
-    .map((teacher) => ({ id: teacher.id, name: teacher.name }));
+    .teachers.map((teacher) => ({ id: teacher.id, name: teacher.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function mockSignUp(input: { username: string; teacherId: string; password: string }): SessionView {
-  const username = normalizeUsername(input.username);
-  const problem = usernameError(username);
+export function mockSignIn(teacherId: string, pin: string): SessionView {
+  const db = readDb();
+  const teacher = db.teachers.find((row) => row.id === teacherId);
+  if (!teacher) throw new Error("That teacher is not in the list.");
+  if (teacher.pin !== pin) throw new Error("That PIN is not correct.");
+  db.sessionUserId = teacher.authUserId;
+  writeDb(db);
+  return toSession(teacher);
+}
+
+export function mockChangePin(oldPin: string, newPin: string) {
+  const problem = pinError(newPin);
   if (problem) throw new Error(problem);
-  if (input.password.length < 6) throw new Error("Use at least 6 characters for the password.");
+  if (oldPin === newPin) throw new Error("Choose a different PIN.");
   const db = readDb();
-  if (db.teachers.some((teacher) => teacher.username === username)) throw new Error("That username is already taken.");
-  const teacher = db.teachers.find((row) => row.id === input.teacherId);
-  if (!teacher) throw new Error("Pick a teacher from the list.");
-  if (teacher.authUserId) throw new Error("That teacher already has an account.");
-  const first = !db.teachers.some((row) => row.authUserId);
-  teacher.authUserId = `user-${username}`;
-  teacher.username = username;
-  teacher.password = input.password;
-  if (first) {
-    teacher.role = "super_admin";
-    teacher.roleStart = null;
-    teacher.roleEnd = null;
-  }
-  db.sessionUserId = teacher.authUserId;
+  const session = current(db);
+  if (!session) throw new Error("Sign in before changing your PIN.");
+  const teacher = db.teachers.find((row) => row.id === session.teacherId);
+  if (!teacher) throw new Error("This sign-in is not linked to a teacher.");
+  if (teacher.pin !== oldPin) throw new Error("The current PIN is not correct.");
+  teacher.pin = newPin;
   writeDb(db);
-  return toSession(teacher);
 }
 
-export function mockSignIn(username: string, password: string): SessionView {
-  const norm = normalizeUsername(username);
-  if (norm === "superadmin") {
-    if (password === "19521971") {
-      return {
-        userId: "hardcoded-superadmin",
-        username: "superadmin",
-        email: "superadmin@routine.local",
-        teacherId: "superadmin",
-        teacherName: "Super Admin",
-        role: "super_admin",
-        storedRole: "super_admin",
-        roleStart: null,
-        roleEnd: null,
-      };
-    }
-    throw new Error("Incorrect password for superadmin.");
-  }
+export function mockAdminResetPin(teacherId: string, newPin: string) {
+  const problem = pinError(newPin);
+  if (problem) throw new Error(problem);
   const db = readDb();
-  const teacher = db.teachers.find((row) => row.username === norm);
-  if (!teacher || teacher.password !== password) throw new Error("Username or password is incorrect.");
-  db.sessionUserId = teacher.authUserId;
+  requireSuperAdmin(db);
+  const teacher = db.teachers.find((row) => row.id === teacherId);
+  if (!teacher) throw new Error("That teacher is not in the list.");
+  teacher.pin = newPin;
   writeDb(db);
-  return toSession(teacher);
 }
 
 export function mockDirectory(): DirectoryRow[] {
@@ -212,10 +264,7 @@ export function mockDirectory(): DirectoryRow[] {
   }));
 }
 
-export function mockUpdateTeacher(
-  teacherId: string,
-  patch: { name?: string; designation?: string },
-) {
+export function mockUpdateTeacher(teacherId: string, patch: { name?: string; designation?: string }) {
   const db = readDb();
   requireSuperAdmin(db);
   const teacher = db.teachers.find((row) => row.id === teacherId);
@@ -253,4 +302,8 @@ export function mockAssignRole(
     teacher.roleEnd = roleEnd;
   }
   writeDb(db);
+}
+
+export function mockResetStore() {
+  storageRemove(STORAGE_KEY);
 }

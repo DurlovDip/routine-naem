@@ -23,6 +23,13 @@ export function usernameError(username: string): string | null {
   return null;
 }
 
+export const DEFAULT_PIN = "6832";
+
+export function pinError(pin: string): string | null {
+  if (!/^[0-9]{4}$/.test(pin)) return "A PIN is 4 digits.";
+  return null;
+}
+
 export function effectiveRole(
   role: StoredRole,
   roleStart: string | null,

@@ -3,7 +3,7 @@ import { CopyPlus, FileDown, LogIn, LogOut, Menu, Printer, Trash2, X } from "luc
 import { AuthProvider, useAuth } from "./auth";
 import { DesignationsProvider } from "./designations";
 import { PeopleSection } from "./components/AccessPanels";
-import { AuthScreen } from "./components/AuthScreen";
+import { AuthScreen, ChangePinDialog } from "./components/AuthScreen";
 import { BatchEditor, FooterEditor, HeaderEditor, LibraryEditor, StructureEditor } from "./components/panels";
 import { GridEditor } from "./components/GridEditor";
 import { PreviewPane } from "./components/PreviewPane";
@@ -39,6 +39,7 @@ function Shell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showPin, setShowPin] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
   const view: Mode = canEdit ? mode : "preview";
   const showEditor = view !== "preview";
@@ -107,14 +108,24 @@ function Shell() {
               <FileDown size={16} /> Print / DOCX
             </Button>
             {auth.session ? (
-              <Button
-                onClick={() => {
-                  setMenuOpen(false);
-                  void auth.signOut();
-                }}
-              >
-                <LogOut size={16} /> Sign out
-              </Button>
+              <>
+                <Button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setShowPin(true);
+                  }}
+                >
+                  Change PIN
+                </Button>
+                <Button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void auth.signOut();
+                  }}
+                >
+                  <LogOut size={16} /> Sign out
+                </Button>
+              </>
             ) : (
               <Button
                 tone="primary"
@@ -307,10 +318,17 @@ function Shell() {
           }}
         />
       ) : null}
+      {showPin && auth.session ? (
+        <div className="modal-back" role="presentation" onMouseDown={() => setShowPin(false)}>
+          <div onMouseDown={(event) => event.stopPropagation()}>
+            <ChangePinDialog onClose={() => setShowPin(false)} />
+          </div>
+        </div>
+      ) : null}
       {showAuthModal && !auth.session ? (
         <div className="modal-back" role="presentation" onMouseDown={() => setShowAuthModal(false)}>
           <div onMouseDown={(e) => e.stopPropagation()}>
-            <AuthScreen onClose={() => setShowAuthModal(false)} initialTab="signin" />
+            <AuthScreen onClose={() => setShowAuthModal(false)} />
           </div>
         </div>
       ) : null}

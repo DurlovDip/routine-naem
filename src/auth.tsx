@@ -8,24 +8,24 @@ import {
   type ReactNode,
 } from "react";
 import {
+  mockAdminResetPin,
   mockAssignRole,
+  mockChangePin,
   mockDirectory,
   mockSession,
-  mockUpdateTeacher,
   mockSignIn,
+  mockSignInTeachers,
   mockSignOut,
-  mockSignUp,
-  mockUnclaimed,
+  mockUpdateTeacher,
   type DirectoryRow,
   type SessionView,
 } from "./lib/mockAuth";
 import {
   effectiveRole,
   missingTeacherColumnNotice,
-  normalizeUsername,
+  pinError,
   syntheticEmail,
   todayIso,
-  usernameError,
   type StoredRole,
 } from "./lib/roles";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
@@ -39,10 +39,11 @@ type AuthValue = {
   ready: boolean;
   session: SessionView | null;
   setupError: string | null;
-  signIn: (username: string, password: string) => Promise<string | null>;
-  signUp: (input: { username: string; teacherId: string; password: string }) => Promise<string | null>;
+  signIn: (teacherId: string, pin: string) => Promise<string | null>;
+  changePin: (oldPin: string, newPin: string) => Promise<string | null>;
+  adminResetPin: (teacherId: string, newPin: string) => Promise<string | null>;
   signOut: () => Promise<void>;
-  unclaimedTeachers: () => Promise<{ id: string; name: string }[]>;
+  signInTeachers: () => Promise<{ id: string; name: string }[]>;
   directory: () => Promise<{ rows: DirectoryRow[]; notice: string | null }>;
   updateTeacher: (
     teacherId: string,
@@ -139,85 +140,13 @@ async function readSupabaseSession(): Promise<SessionView | null> {
   };
 }
 
-export const HARDCODED_SUPERADMIN = {
-  username: "superadmin",
-  password: "19521971",
-};
+const PIN_MIGRATION = "supabase/migration_add_teacher_pin.sql";
 
-export const HARDCODED_SUPERADMIN_SESSION: SessionView = {
-  userId: "hardcoded-superadmin",
-  username: "superadmin",
-  email: "superadmin@routine.local",
-  teacherId: "superadmin",
-  teacherName: "Super Admin",
-  role: "super_admin",
-  storedRole: "super_admin",
-  roleStart: null,
-  roleEnd: null,
-};
-
-const HARDCODED_ADMIN_STORAGE_KEY = "routine-naem-hardcoded-admin";
-
-function shortcutRequested(): boolean {
-  try {
-    return typeof window !== "undefined" && localStorage.getItem(HARDCODED_ADMIN_STORAGE_KEY) === "true";
-  } catch {
-    return false;
+function pinMigrationHint(message: string): string {
+  if (/login_with_pin|teacher_sign_in_options|schema cache|does not exist|PGRST202|confirm|routine\.local|signup|sign up|invalid login|email/i.test(message)) {
+    return `PIN sign-in is not ready yet. Run ${PIN_MIGRATION} in the Supabase SQL editor, then try again.`;
   }
-}
-
-function rememberShortcut() {
-  try {
-    localStorage.setItem(HARDCODED_ADMIN_STORAGE_KEY, "true");
-  } catch {
-    // ignore
-  }
-}
-
-let shortcutOpen: Promise<SessionView> | null = null;
-
-async function openShortcutAccount(): Promise<SessionView> {
-  if (!supabase) throw new Error("Supabase is not configured.");
-  if (!shortcutOpen) {
-    shortcutOpen = openShortcutAccountOnce().finally(() => {
-      shortcutOpen = null;
-    });
-  }
-  return shortcutOpen;
-}
-
-async function openShortcutAccountOnce(): Promise<SessionView> {
-  if (!supabase) throw new Error("Supabase is not configured.");
-  const email = syntheticEmail(HARDCODED_SUPERADMIN.username);
-  const password = HARDCODED_SUPERADMIN.password;
-  const current = await supabase.auth.getSession();
-  const currentEmail = current.data.session?.user.email?.toLowerCase();
-  if (currentEmail !== email) {
-    const signedIn = await supabase.auth.signInWithPassword({ email, password });
-    if (signedIn.error) {
-      const created = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { username: "superadmin", teacher_id: "superadmin" } },
-      });
-      if (created.error) {
-        throw new Error(
-          `${created.error.message} Run supabase/migration_superadmin_account.sql in the Supabase SQL editor, then sign in again.`,
-        );
-      }
-      if (!created.data.session) {
-        const again = await supabase.auth.signInWithPassword({ email, password });
-        if (again.error) {
-          throw new Error("Turn off Confirm email for the superadmin@routine.local account, then sign in again.");
-        }
-      }
-    }
-  }
-  const view = await readSupabaseSession();
-  if (!view) {
-    throw new Error("Run supabase/migration_superadmin_account.sql so superadmin@routine.local is a super admin.");
-  }
-  return view;
+  return message;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -226,18 +155,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!isAuthMock && supabase && shortcutRequested()) {
-      try {
-        setSession(await openShortcutAccount());
-        setNotice(null);
-      } catch (err) {
-        setSession(null);
-        setNotice(err instanceof Error ? err.message : String(err));
-      } finally {
-        setReady(true);
-      }
-      return;
-    }
     if (isAuthMock) {
       setSession(mockSession());
       setReady(true);
@@ -268,43 +185,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => data.subscription.unsubscribe();
   }, [refresh]);
 
-  const signIn = useCallback(async (username: string, password: string) => {
-    const normalized = normalizeUsername(username);
-
-    if (normalized === HARDCODED_SUPERADMIN.username) {
-      if (password !== HARDCODED_SUPERADMIN.password) return "Incorrect password for superadmin.";
-      rememberShortcut();
-      try {
-        if (isAuthMock) {
-          setSession(mockSignIn(normalized, password));
-          return null;
-        }
-        if (!supabase) return "Supabase is not configured.";
-        setSession(await openShortcutAccount());
-        return null;
-      } catch (err) {
-        return err instanceof Error ? err.message : String(err);
-      }
-    }
-
-    const problem = usernameError(normalized);
+  const signIn = useCallback(async (teacherId: string, pin: string) => {
+    const problem = pinError(pin);
+    if (!teacherId) return "Pick your name.";
     if (problem) return problem;
     try {
       if (isAuthMock) {
-        setSession(mockSignIn(normalized, password));
+        setSession(mockSignIn(teacherId, pin));
         return null;
       }
       if (!supabase) return "Supabase is not configured.";
-      const { error } = await supabase.auth.signInWithPassword({
-        email: syntheticEmail(normalized),
-        password,
-      });
-      if (error) return error.message;
-      try {
-        localStorage.removeItem(HARDCODED_ADMIN_STORAGE_KEY);
-      } catch {
-        // ignore
-      }
+      const prepared = await supabase.rpc("login_with_pin", { teacher_id: teacherId, pin });
+      if (prepared.error) return pinMigrationHint(prepared.error.message);
+      const email = typeof prepared.data === "string" ? prepared.data : "";
+      if (!email) return `Sign-in did not return an account. Run ${PIN_MIGRATION} in the Supabase SQL editor.`;
+      const { error } = await supabase.auth.signInWithPassword({ email, password: pin });
+      if (error) return pinMigrationHint(error.message);
       setSession(await readSupabaseSession());
       return null;
     } catch (err) {
@@ -312,44 +208,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const signUp = useCallback(async (input: { username: string; teacherId: string; password: string }) => {
-    const username = normalizeUsername(input.username);
-    const problem = usernameError(username);
+  const changePin = useCallback(async (oldPin: string, newPin: string) => {
+    const problem = pinError(newPin);
     if (problem) return problem;
-    if (input.password.length < 6) return "Use at least 6 characters for the password.";
+    if (oldPin === newPin) return "Choose a different PIN.";
     try {
       if (isAuthMock) {
-        setSession(mockSignUp({ ...input, username }));
+        mockChangePin(oldPin, newPin);
         return null;
       }
       if (!supabase) return "Supabase is not configured.";
-      const available = await supabase.rpc("username_available", { uname: username });
-      if (available.error) return available.error.message;
-      if (available.data === false) return "That username is already taken.";
-      const { error } = await supabase.auth.signUp({
-        email: syntheticEmail(username),
-        password: input.password,
-        options: { data: { username, teacher_id: input.teacherId } },
-      });
-      if (error) return error.message;
-      try {
-        localStorage.removeItem(HARDCODED_ADMIN_STORAGE_KEY);
-      } catch {
-        // ignore
+      const { error } = await supabase.rpc("change_pin", { old_pin: oldPin, new_pin: newPin });
+      return error ? pinMigrationHint(error.message) : null;
+    } catch (err) {
+      return err instanceof Error ? err.message : String(err);
+    }
+  }, []);
+
+  const adminResetPin = useCallback(async (teacherId: string, newPin: string) => {
+    const problem = pinError(newPin);
+    if (problem) return problem;
+    try {
+      if (isAuthMock) {
+        mockAdminResetPin(teacherId, newPin);
+        return null;
       }
-      setSession(await readSupabaseSession());
-      return null;
+      if (!supabase) return "Supabase is not configured.";
+      const { error } = await supabase.rpc("admin_reset_pin", { teacher_id: teacherId, new_pin: newPin });
+      return error ? pinMigrationHint(error.message) : null;
     } catch (err) {
       return err instanceof Error ? err.message : String(err);
     }
   }, []);
 
   const signOut = useCallback(async () => {
-    try {
-      localStorage.removeItem(HARDCODED_ADMIN_STORAGE_KEY);
-    } catch {
-      // ignore
-    }
     if (isAuthMock) {
       mockSignOut();
       setSession(null);
@@ -359,12 +251,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(null);
   }, []);
 
-  const unclaimedTeachers = useCallback(async () => {
-    if (isAuthMock) return mockUnclaimed();
+  const signInTeachers = useCallback(async () => {
+    if (isAuthMock) return mockSignInTeachers();
     if (!supabase) return [];
-    const { data, error } = await supabase.rpc("unclaimed_teachers");
-    if (error) throw new Error(error.message);
-    return (data ?? []) as { id: string; name: string }[];
+    const rpc = await supabase.rpc("teacher_sign_in_options");
+    if (!rpc.error && Array.isArray(rpc.data)) {
+      return (rpc.data as { id: string; name: string }[]).map((row) => ({ id: row.id, name: row.name }));
+    }
+    const fallback = await supabase.from("teachers").select("id, name").order("name");
+    if (!fallback.error && fallback.data) {
+      return fallback.data as { id: string; name: string }[];
+    }
+    throw new Error(pinMigrationHint(rpc.error?.message ?? fallback.error?.message ?? "Could not load teachers."));
   }, []);
 
   const directory = useCallback(async () => {
@@ -439,9 +337,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { error } = await supabase
           .from("teachers")
           .update({ ...next, updated_at: new Date().toISOString() })
-          .eq("id", teacherId);
+          .eq("id", teacherId)
+          .select("id");
         if (error && next.designation !== undefined && /designation/i.test(error.message) && /does not exist|42703/i.test(error.message)) {
-          const retry = await supabase.from("teachers").update({ ...(next.name ? { name: next.name } : {}), updated_at: new Date().toISOString() }).eq("id", teacherId);
+          const retry = await supabase
+            .from("teachers")
+            .update({ ...(next.name ? { name: next.name } : {}), updated_at: new Date().toISOString() })
+            .eq("id", teacherId)
+            .select("id");
           if (next.name && !retry.error) {
             return "Name saved. Designation is not a column on teachers yet. Run supabase/migration_add_teacher_designation.sql.";
           }
@@ -492,14 +395,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       setupError: notice,
       signIn,
-      signUp,
+      changePin,
+      adminResetPin,
       signOut,
-      unclaimedTeachers,
+      signInTeachers,
       directory,
       updateTeacher,
       assignRole,
     }),
-    [ready, session, notice, signIn, signUp, signOut, unclaimedTeachers, directory, updateTeacher, assignRole],
+    [ready, session, notice, signIn, changePin, adminResetPin, signOut, signInTeachers, directory, updateTeacher, assignRole],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
