@@ -124,7 +124,7 @@ export function DesignationsProvider({ children }: { children: ReactNode }) {
       if (source === "table" && supabase) {
         const { error: updateError } = await supabase.from("designations").update({ name: next }).eq("id", id);
         if (updateError) return updateError.message;
-        await supabase.from("teachers").update({ designation: next }).eq("designation", current.name);
+        await supabase.from("teachers").update({ designation: next }).eq("designation", current.name).select("id");
       } else {
         remember(rows.map((row) => (row.id === id ? { ...row, name: next } : row)));
       }

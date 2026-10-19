@@ -1,5 +1,7 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { effectiveRole, missingTeacherColumnNotice } from "../src/lib/roles";
+import { mockAdminResetPin, mockChangePin, mockResetStore, mockSignIn } from "../src/lib/mockAuth";
+import { effectiveRole, missingTeacherColumnNotice, pinError } from "../src/lib/roles";
 
 describe("effective role", () => {
   it("keeps a super admin active without dates", () => {
@@ -30,12 +32,43 @@ describe("effective role", () => {
     expect(effectiveRole("teacher", "2026-10-01", "2026-10-31", "2026-10-18")).toBe("teacher");
   });
 
-  it("authenticates hardcoded superadmin with superadmin / 19521971", async () => {
-    const { mockSignIn } = await import("../src/lib/mockAuth");
-    const session = mockSignIn("superadmin", "19521971");
-    expect(session.role).toBe("super_admin");
-    expect(session.username).toBe("superadmin");
+  it("signs in Dr. Litan Kanti Halder with the default PIN 6832", () => {
+    mockResetStore();
+    const session = mockSignIn("teacher-17", "6832");
+    expect(session.teacherName).toBe("Dr. Litan Kanti Halder");
+    expect(session.role).toBe("teacher");
+    expect(() => mockSignIn("teacher-17", "0000")).toThrowError("That PIN is not correct.");
+    mockSignIn("teacher-17", "6832");
+    mockChangePin("6832", "1111");
+    expect(mockSignIn("teacher-17", "1111").teacherId).toBe("teacher-17");
+    expect(() => mockSignIn("teacher-17", "6832")).toThrowError("That PIN is not correct.");
+  });
 
-    expect(() => mockSignIn("superadmin", "wrongpass")).toThrowError("Incorrect password for superadmin.");
+  it("lets a super admin reset a PIN to 6832", () => {
+    mockResetStore();
+    mockSignIn("teacher-17", "6832");
+    mockChangePin("6832", "2222");
+    const admin = mockSignIn("superadmin", "6832");
+    expect(admin.role).toBe("super_admin");
+    mockAdminResetPin("teacher-17", "6832");
+    const session = mockSignIn("teacher-17", "6832");
+    expect(session.teacherName).toBe("Dr. Litan Kanti Halder");
+  });
+
+  it("rejects a PIN that is not 4 digits", () => {
+    expect(pinError("6832")).toBeNull();
+    expect(pinError("683")).toMatch(/4 digits/);
+    expect(pinError("68321")).toMatch(/4 digits/);
+    expect(pinError("68a2")).toMatch(/4 digits/);
+  });
+
+  it("seeds PIN 6832 in the teacher PIN migration and checks Litan", () => {
+    const sql = readFileSync(new URL("../supabase/migration_add_teacher_pin.sql", import.meta.url), "utf8");
+    expect(sql).toContain("default '6832'");
+    expect(sql).toMatch(/update public\.teachers set pin = '6832'/);
+    expect(sql.toLowerCase()).toContain("litan kanti halder");
+    expect(sql).toContain("login_with_pin");
+    expect(sql).toContain("change_pin");
+    expect(sql).toContain("admin_reset_pin");
   });
 });

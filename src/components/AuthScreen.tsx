@@ -3,21 +3,10 @@ import { X } from "lucide-react";
 import { useAuth } from "../auth";
 import { Button } from "./ui";
 
-type Tab = "signin" | "signup";
-
-export function AuthScreen({
-  onClose,
-  initialTab = "signin",
-}: {
-  onClose?: () => void;
-  initialTab?: "signin" | "signup";
-} = {}) {
+export function AuthScreen({ onClose }: { onClose?: () => void } = {}) {
   const auth = useAuth();
-  const [tab, setTab] = useState<Tab>(initialTab);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
   const [teacherId, setTeacherId] = useState("");
+  const [pin, setPin] = useState("");
   const [teachers, setTeachers] = useState<Array<{ id: string; name: string }>>([]);
   const [teachersError, setTeachersError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,11 +14,11 @@ export function AuthScreen({
 
   useEffect(() => {
     let mounted = true;
-    void auth.unclaimedTeachers().then(
+    void auth.signInTeachers().then(
       (rows) => {
         if (!mounted) return;
         setTeachers(rows);
-        setTeacherId((current) => current || rows[0]?.id || "");
+        setTeachersError(null);
       },
       (err: unknown) => {
         if (!mounted) return;
@@ -44,21 +33,11 @@ export function AuthScreen({
   async function submit(event: FormEvent) {
     event.preventDefault();
     setError(null);
-    if (tab === "signup" && password !== confirm) {
-      setError("Those passwords don’t match.");
-      return;
-    }
     setBusy(true);
-    const message =
-      tab === "signup"
-        ? await auth.signUp({ username, teacherId, password })
-        : await auth.signIn(username, password);
+    const message = await auth.signIn(teacherId, pin);
     setBusy(false);
-    if (message) {
-      setError(message);
-    } else if (onClose) {
-      onClose();
-    }
+    if (message) setError(message);
+    else if (onClose) onClose();
   }
 
   return (
@@ -76,88 +55,138 @@ export function AuthScreen({
           </button>
         ) : null}
         <h1>Daily Schedule</h1>
-        <p className="auth-lead">Sign in with the username you chose. There is no separate email.</p>
-        {auth.mock ? <p className="hint">This screen is a local preview. Accounts stay in this browser.</p> : null}
+        <p className="auth-lead">Pick your name and enter your PIN.</p>
+        {auth.mock ? <p className="hint">This screen is a local preview. Sign-in stays in this browser.</p> : null}
         {auth.setupError ? <p className="auth-error">{auth.setupError}</p> : null}
-        <div className="segmented" role="group" aria-label="Account">
-          <button type="button" aria-pressed={tab === "signin"} onClick={() => setTab("signin")}>
-            Sign in
-          </button>
-          <button type="button" aria-pressed={tab === "signup"} onClick={() => setTab("signup")}>
-            Create account
-          </button>
-        </div>
         <label>
-          <span className="field-label">Username</span>
-          <input
+          <span className="field-label">Name</span>
+          <select
             className="field"
-            name="username"
-            placeholder={tab === "signin" ? "e.g. superadmin" : "Choose username"}
-            autoComplete="username"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
+            id="teacher-select"
+            name="teacher"
+            aria-label="Name"
+            value={teacherId}
+            onChange={(event) => setTeacherId(event.target.value)}
             required
-          />
+          >
+            <option value="">Pick your name</option>
+            {teachers.map((teacher) => (
+              <option key={teacher.id} value={teacher.id}>
+                {teacher.name}
+              </option>
+            ))}
+          </select>
+          {teachersError ? <span className="auth-error">{teachersError}</span> : null}
+          {!teachersError && teachers.length === 0 ? (
+            <span className="hint">No teachers were returned. Run supabase/migration_add_teacher_pin.sql.</span>
+          ) : (
+            <span className="hint">The starting PIN for every teacher is 6832.</span>
+          )}
         </label>
-        {tab === "signup" ? (
-          <label>
-            <span className="field-label">Name</span>
-            <select
-              className="field"
-              name="teacher"
-              aria-label="Name"
-              value={teacherId}
-              onChange={(event) => setTeacherId(event.target.value)}
-              required
-            >
-              {teachers.length === 0 ? <option value="">No teachers available</option> : null}
-              {teachers.map((teacher) => (
-                <option key={teacher.id} value={teacher.id}>
-                  {teacher.name}
-                </option>
-              ))}
-            </select>
-            {teachersError ? <span className="auth-error">{teachersError}</span> : null}
-            {!teachersError && teachers.length === 0 ? (
-              <span className="hint">Add teachers in Supabase before the first account, or run the seed script.</span>
-            ) : (
-              <span className="hint">Each teacher can claim only one account.</span>
-            )}
-          </label>
-        ) : null}
         <label>
-          <span className="field-label">Password</span>
+          <span className="field-label">PIN</span>
           <input
             className="field"
-            name="password"
+            id="pin"
+            name="pin"
             type="password"
-            autoComplete={tab === "signup" ? "new-password" : "current-password"}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            minLength={8}
+            inputMode="numeric"
+            autoComplete="off"
+            pattern="[0-9]{4}"
+            maxLength={4}
+            value={pin}
+            onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
             required
           />
         </label>
-        {tab === "signup" ? (
-          <label>
-            <span className="field-label">Confirm password</span>
-            <input
-              className="field"
-              name="confirm"
-              type="password"
-              autoComplete="new-password"
-              value={confirm}
-              onChange={(event) => setConfirm(event.target.value)}
-              minLength={8}
-              required
-            />
-          </label>
-        ) : null}
         {error ? <p className="auth-error">{error}</p> : null}
-        <Button tone="primary" type="submit" disabled={busy || (tab === "signup" && teachers.length === 0)}>
-          {busy ? "Please wait…" : tab === "signup" ? "Create account" : "Sign in"}
+        <Button id="sign-in-button" tone="primary" type="submit" disabled={busy || teachers.length === 0}>
+          {busy ? "Please wait…" : "Sign in"}
         </Button>
       </form>
     </div>
+  );
+}
+
+export function ChangePinDialog({ onClose }: { onClose: () => void }) {
+  const auth = useAuth();
+  const [oldPin, setOldPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    if (newPin !== confirm) {
+      setError("Those PINs don’t match.");
+      return;
+    }
+    setBusy(true);
+    const message = await auth.changePin(oldPin, newPin);
+    setBusy(false);
+    if (message) setError(message);
+    else setDone(true);
+  }
+
+  return (
+    <div className="auth-shell">
+      <form className="auth-card" style={{ position: "relative" }} onSubmit={(event) => void submit(event)}>
+        <button
+          type="button"
+          aria-label="Close"
+          className="icon-btn"
+          style={{ position: "absolute", top: "0.85rem", right: "0.85rem" }}
+          onClick={onClose}
+        >
+          <X size={18} />
+        </button>
+        <h1>Change PIN</h1>
+        <p className="auth-lead">
+          {auth.session ? `${auth.session.teacherName}. ` : ""}
+          Use 4 digits. You stay signed in on this browser.
+        </p>
+        {done ? (
+          <>
+            <p className="hint">Your PIN is updated. The next sign-in uses the new PIN.</p>
+            <Button tone="primary" type="button" onClick={onClose}>
+              Done
+            </Button>
+          </>
+        ) : (
+          <>
+            <PinField label="Current PIN" value={oldPin} onChange={setOldPin} />
+            <PinField label="New PIN" value={newPin} onChange={setNewPin} />
+            <PinField label="Confirm new PIN" value={confirm} onChange={setConfirm} />
+            {error ? <p className="auth-error">{error}</p> : null}
+            <Button id="change-pin-button" tone="primary" type="submit" disabled={busy}>
+              {busy ? "Please wait…" : "Change PIN"}
+            </Button>
+          </>
+        )}
+      </form>
+    </div>
+  );
+}
+
+function PinField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label>
+      <span className="field-label">{label}</span>
+      <input
+        className="field"
+        type="password"
+        inputMode="numeric"
+        autoComplete="off"
+        pattern="[0-9]{4}"
+        maxLength={4}
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value.replace(/\D/g, "").slice(0, 4))}
+        required
+      />
+    </label>
   );
 }
