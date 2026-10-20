@@ -41,23 +41,28 @@ export function Field({ style, ...props }: TextInputProps) {
 
 export function Button({
   label,
+  icon,
   onPress,
   tone = "ghost",
   disabled,
   small,
   testID,
+  accessibilityLabel,
 }: {
-  label: string;
+  label?: string;
+  icon?: ReactNode;
   onPress: () => void;
   tone?: "primary" | "ghost" | "danger" | "quiet";
   disabled?: boolean;
   small?: boolean;
   testID?: string;
+  accessibilityLabel?: string;
 }) {
   return (
     <Pressable
       testID={testID}
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
       disabled={disabled}
       onPress={onPress}
       style={[
@@ -70,18 +75,22 @@ export function Button({
         disabled && styles.disabled,
       ]}
     >
-      <T
-        weight="semibold"
-        style={[
-          styles.buttonText,
-          small && { fontSize: 12 },
-          tone === "primary" && { color: "#fff" },
-          tone === "quiet" && { color: colors.accent },
-          tone === "danger" && { color: colors.danger },
-        ]}
-      >
-        {label}
-      </T>
+      {icon}
+      {label ? (
+        <T
+          weight="semibold"
+          numberOfLines={1}
+          style={[
+            styles.buttonText,
+            small && { fontSize: 12 },
+            tone === "primary" && { color: "#fff" },
+            tone === "quiet" && { color: colors.accent },
+            tone === "danger" && { color: colors.danger },
+          ]}
+        >
+          {label}
+        </T>
+      ) : null}
     </Pressable>
   );
 }
@@ -221,6 +230,8 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
   },
   buttonSmall: { paddingHorizontal: 8, paddingVertical: 6 },
   buttonText: { fontSize: 13 },

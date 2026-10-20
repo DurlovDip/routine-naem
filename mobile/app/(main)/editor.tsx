@@ -1,3 +1,4 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { Redirect } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
@@ -16,6 +17,7 @@ export default function EditorScreen() {
   const [batchId, setBatchId] = useState(state.batches[0]?.id ?? "");
   const [dateText, setDateText] = useState(day.date);
   const [dayText, setDayText] = useState(String(day.dayNumber));
+  const [showDaySettings, setShowDaySettings] = useState(false);
 
   useEffect(() => setDateText(day.date), [day.date]);
   useEffect(() => setDayText(String(day.dayNumber)), [day.dayNumber]);
@@ -48,7 +50,7 @@ export default function EditorScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.desk }} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, alignItems: "center" }}>
         {state.days.map((item) => {
           const on = item.id === day.id;
           return (
@@ -61,65 +63,86 @@ export default function EditorScreen() {
             />
           );
         })}
+        <Button
+          small
+          tone={showDaySettings ? "primary" : "ghost"}
+          icon={<Ionicons name={showDaySettings ? "close" : "add"} size={17} color={showDaySettings ? "#fff" : colors.ink} />}
+          testID="toggle-day-settings"
+          accessibilityLabel={showDaySettings ? "Collapse day settings" : "Add or edit days"}
+          onPress={() => setShowDaySettings((prev) => !prev)}
+        />
       </ScrollView>
 
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <View style={{ flex: 1 }}>
-          <Label>Date</Label>
-          <Field
-            value={dateText}
-            onChangeText={(value) => {
-              setDateText(value);
-              if (isIsoDate(value)) dispatch({ type: "update-day", id: day.id, patch: { date: value } });
-            }}
-            autoCapitalize="none"
-            placeholder="YYYY-MM-DD"
-          />
-          <T style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>{weekdayName(day.date)}</T>
-        </View>
-        <View style={{ width: 96 }}>
-          <Label>Day number</Label>
-          <Field
-            value={dayText}
-            keyboardType="number-pad"
-            onChangeText={(value) => {
-              setDayText(value);
-              const num = Number(value);
-              if (Number.isFinite(num) && num >= 1) dispatch({ type: "update-day", id: day.id, patch: { dayNumber: num } });
-            }}
-          />
-        </View>
-      </View>
+      {showDaySettings ? (
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            borderWidth: 1,
+            borderColor: colors.line,
+            borderRadius: 12,
+            padding: 12,
+            gap: 12,
+          }}
+        >
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={{ flex: 1 }}>
+              <Label>Date</Label>
+              <Field
+                value={dateText}
+                onChangeText={(value) => {
+                  setDateText(value);
+                  if (isIsoDate(value)) dispatch({ type: "update-day", id: day.id, patch: { date: value } });
+                }}
+                autoCapitalize="none"
+                placeholder="YYYY-MM-DD"
+              />
+              <T style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>{weekdayName(day.date)}</T>
+            </View>
+            <View style={{ width: 96 }}>
+              <Label>Day number</Label>
+              <Field
+                value={dayText}
+                keyboardType="number-pad"
+                onChangeText={(value) => {
+                  setDayText(value);
+                  const num = Number(value);
+                  if (Number.isFinite(num) && num >= 1) dispatch({ type: "update-day", id: day.id, patch: { dayNumber: num } });
+                }}
+              />
+            </View>
+          </View>
 
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-        <Button label="Duplicate to next day" tone="primary" disabled={nextDayExists} onPress={() => dispatch({ type: "duplicate-day", dayId: day.id })} />
-        <Button label="Blank next day" disabled={nextDayExists} onPress={() => dispatch({ type: "new-day", dayId: day.id })} />
-        <Button
-          label="Delete day"
-          tone="danger"
-          disabled={state.days.length <= 1}
-          onPress={() =>
-            Alert.alert("Delete this day?", "The routines on the other days stay.", [
-              { text: "Cancel", style: "cancel" },
-              { text: "Delete day", style: "destructive", onPress: () => dispatch({ type: "delete-day", dayId: day.id }) },
-            ])
-          }
-        />
-      </View>
-      {nextDayExists ? (
-        <View style={{ backgroundColor: colors.warnBg, borderColor: "#ead9b0", borderWidth: 1, borderRadius: 8, padding: 8, gap: 6 }}>
-          <T style={{ color: colors.warn, fontSize: 12 }}>
-            Day {String(nextDayNum).padStart(2, "0")} ({formatSlashDate(nextDate)}) already exists.
-          </T>
-          <Button
-            small
-            label={`Duplicate as Day ${String(maxDayNum + 1).padStart(2, "0")}`}
-            onPress={() => dispatch({ type: "duplicate-day-to-end", dayId: day.id })}
-          />
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            <Button label="Duplicate to next day" tone="primary" disabled={nextDayExists} onPress={() => dispatch({ type: "duplicate-day", dayId: day.id })} />
+            <Button label="Blank next day" disabled={nextDayExists} onPress={() => dispatch({ type: "new-day", dayId: day.id })} />
+            <Button
+              label="Delete day"
+              tone="danger"
+              disabled={state.days.length <= 1}
+              onPress={() =>
+                Alert.alert("Delete this day?", "The routines on the other days stay.", [
+                  { text: "Cancel", style: "cancel" },
+                  { text: "Delete day", style: "destructive", onPress: () => dispatch({ type: "delete-day", dayId: day.id }) },
+                ])
+              }
+            />
+          </View>
+          {nextDayExists ? (
+            <View style={{ backgroundColor: colors.warnBg, borderColor: "#ead9b0", borderWidth: 1, borderRadius: 8, padding: 8, gap: 6 }}>
+              <T style={{ color: colors.warn, fontSize: 12 }}>
+                Day {String(nextDayNum).padStart(2, "0")} ({formatSlashDate(nextDate)}) already exists.
+              </T>
+              <Button
+                small
+                label={`Duplicate as Day ${String(maxDayNum + 1).padStart(2, "0")}`}
+                onPress={() => dispatch({ type: "duplicate-day-to-end", dayId: day.id })}
+              />
+            </View>
+          ) : null}
+          <CheckRow label="Auto-rotate day managers" value={state.autoRotate} onChange={(value) => dispatch({ type: "set-auto-rotate", value })} />
+          <CheckRow label="Clash warning" value={state.showConflicts} onChange={(value) => dispatch({ type: "set-show-conflicts", value })} />
         </View>
       ) : null}
-      <CheckRow label="Auto-rotate day managers" value={state.autoRotate} onChange={(value) => dispatch({ type: "set-auto-rotate", value })} />
-      <CheckRow label="Clash warning" value={state.showConflicts} onChange={(value) => dispatch({ type: "set-show-conflicts", value })} />
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
         <Button label="Add batch" onPress={addBatch} />

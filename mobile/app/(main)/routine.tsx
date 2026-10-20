@@ -1,9 +1,12 @@
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
+import { useAccess } from "../../src/auth";
 import { buildTimeline, rowCells, type SheetCell } from "../../src/lib/schedule";
 import { batchLines, cleanBatchNumber, formatModule, joinWithAnd, orderedManagers, sessionSpanLabel } from "../../src/lib/text";
 import { formatDayNumber, formatRange, formatSlashDate, weekdayName } from "../../src/lib/time";
-import { shareOrPrintRoutine } from "../../src/pdf";
+import { downloadRoutine } from "../../src/pdf";
 import { useSchedule } from "../../src/store";
 import { colors } from "../../src/theme";
 import { Button, Segmented, T } from "../../src/ui";
@@ -11,6 +14,8 @@ import { Button, Segmented, T } from "../../src/ui";
 type ViewMode = "list" | "table";
 
 export default function RoutineScreen() {
+  const router = useRouter();
+  const access = useAccess();
   const { state, dispatch, day, hydrated } = useSchedule();
   const [mode, setMode] = useState<ViewMode>("list");
   const timeline = buildTimeline(day);
@@ -24,7 +29,7 @@ export default function RoutineScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.desk }}>
       <View style={{ paddingTop: 12, gap: 10 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16, alignItems: "center" }}>
           {state.days.map((item) => {
             const on = item.id === day.id;
             return (
@@ -37,6 +42,15 @@ export default function RoutineScreen() {
               />
             );
           })}
+          {access.canEdit ? (
+            <Button
+              small
+              icon={<Ionicons name="add" size={17} color={colors.ink} />}
+              testID="routine-add-day"
+              accessibilityLabel="Add or edit days"
+              onPress={() => router.push("/(main)/editor")}
+            />
+          ) : null}
         </ScrollView>
         <View style={{ paddingHorizontal: 16, gap: 8 }}>
           {title ? <T weight="semibold" style={{ fontSize: 13 }}>{title}</T> : null}
@@ -56,7 +70,12 @@ export default function RoutineScreen() {
                 ]}
               />
             </View>
-            <Button label="PDF" tone="primary" onPress={() => shareOrPrintRoutine(state, day)} />
+            <Button
+              label="Download"
+              icon={<Ionicons name="download-outline" size={16} color="#fff" />}
+              tone="primary"
+              onPress={() => void downloadRoutine(state, day)}
+            />
           </View>
         </View>
       </View>

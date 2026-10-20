@@ -159,96 +159,58 @@ export async function fetchRemoteSchedule(): Promise<AppState | null> {
 }
 
 async function syncTeachers(teachers: Teacher[], timestamp: string) {
-  if (!supabase) return;
-  if (teachers.length > 0) {
-    const rows = teachers.map((t) => ({
+  if (!supabase || teachers.length === 0) return;
+
+  const rows = teachers.map((t) => ({
+    id: t.id,
+    name: t.name,
+    designation: t.designation || "",
+    updated_at: timestamp,
+  }));
+  const { error: upsertErr } = await supabase.from(TEACHERS_TABLE).upsert(rows, { onConflict: "id" }).select("id");
+  if (upsertErr && upsertErr.message.includes("designation")) {
+    const fallbackRows = teachers.map((t) => ({
       id: t.id,
       name: t.name,
-      designation: t.designation || "",
       updated_at: timestamp,
     }));
-    const { error: upsertErr } = await supabase.from(TEACHERS_TABLE).upsert(rows, { onConflict: "id" }).select("id");
-    if (upsertErr && upsertErr.message.includes("designation")) {
-      const fallbackRows = teachers.map((t) => ({
-        id: t.id,
-        name: t.name,
-        updated_at: timestamp,
-      }));
-      await supabase.from(TEACHERS_TABLE).upsert(fallbackRows, { onConflict: "id" }).select("id");
-    }
-  }
-
-  const { data: remoteRows, error } = await supabase.from(TEACHERS_TABLE).select("id");
-  if (!error && remoteRows) {
-    const activeIds = new Set(teachers.map((t) => t.id));
-    const toDelete = remoteRows.map((r: { id: string }) => r.id).filter((id) => !activeIds.has(id));
-    if (toDelete.length > 0) {
-      await supabase.from(TEACHERS_TABLE).delete().in("id", toDelete);
-    }
+    await supabase.from(TEACHERS_TABLE).upsert(fallbackRows, { onConflict: "id" }).select("id");
   }
 }
 
 async function syncModules(modules: ModuleEntry[], timestamp: string) {
-  if (!supabase) return;
-  if (modules.length > 0) {
-    const rows = modules.map((m, index) => {
-      const numId = parseInt(m.id.replace(/\D/g, ""), 10) || (index + 1);
-      const parsed = parseModuleCode(m.code);
-      const mNum = m.moduleNumber ?? (parsed ? parsed.moduleNumber.replace(/^M-/, "") : m.code);
-      const sNum = m.moduleSubnumber ?? (parsed ? parsed.subNumber.replace(/^\./, "") : "");
-      const name = m.moduleName ?? m.title ?? "";
-      return {
-        id: numId,
-        module_number: mNum,
-        module_subnumber: sNum,
-        module_name: name,
-        updated_at: timestamp,
-      };
-    });
-    await supabase.from(MODULES_TABLE).upsert(rows, { onConflict: "id" });
-  }
+  if (!supabase || modules.length === 0) return;
 
-  const { data: remoteRows, error } = await supabase.from(MODULES_TABLE).select("id");
-  if (!error && remoteRows) {
-    const activeNumIds = new Set(
-      modules.map((m, idx) => parseInt(m.id.replace(/\D/g, ""), 10) || (idx + 1)),
-    );
-    const toDelete = remoteRows
-      .map((r: { id: number }) => r.id)
-      .filter((id) => !activeNumIds.has(id));
-    if (toDelete.length > 0) {
-      await supabase.from(MODULES_TABLE).delete().in("id", toDelete);
-    }
-  }
+  const rows = modules.map((m, index) => {
+    const numId = parseInt(m.id.replace(/\D/g, ""), 10) || (index + 1);
+    const parsed = parseModuleCode(m.code);
+    const mNum = m.moduleNumber ?? (parsed ? parsed.moduleNumber.replace(/^M-/, "") : m.code);
+    const sNum = m.moduleSubnumber ?? (parsed ? parsed.subNumber.replace(/^\./, "") : "");
+    const name = m.moduleName ?? m.title ?? "";
+    return {
+      id: numId,
+      module_number: mNum,
+      module_subnumber: sNum,
+      module_name: name,
+      updated_at: timestamp,
+    };
+  });
+  await supabase.from(MODULES_TABLE).upsert(rows, { onConflict: "id" });
 }
 
 async function syncBatches(batches: Batch[], timestamp: string) {
-  if (!supabase) return;
-  if (batches.length > 0) {
-    const rows = batches.map((b, index) => {
-      const numId = parseInt(b.id.replace(/\D/g, ""), 10) || (index + 1);
-      return {
-        id: numId,
-        name: b.name ?? "",
-        number_of_students: b.numberOfStudents ?? 40,
-        updated_at: timestamp,
-      };
-    });
-    await supabase.from(BATCHES_TABLE).upsert(rows, { onConflict: "id" });
-  }
+  if (!supabase || batches.length === 0) return;
 
-  const { data: remoteRows, error } = await supabase.from(BATCHES_TABLE).select("id");
-  if (!error && remoteRows) {
-    const activeNumIds = new Set(
-      batches.map((b, idx) => parseInt(b.id.replace(/\D/g, ""), 10) || (idx + 1)),
-    );
-    const toDelete = remoteRows
-      .map((r: { id: number }) => r.id)
-      .filter((id) => !activeNumIds.has(id));
-    if (toDelete.length > 0) {
-      await supabase.from(BATCHES_TABLE).delete().in("id", toDelete);
-    }
-  }
+  const rows = batches.map((b, index) => {
+    const numId = parseInt(b.id.replace(/\D/g, ""), 10) || (index + 1);
+    return {
+      id: numId,
+      name: b.name ?? "",
+      number_of_students: b.numberOfStudents ?? 40,
+      updated_at: timestamp,
+    };
+  });
+  await supabase.from(BATCHES_TABLE).upsert(rows, { onConflict: "id" });
 }
 
 /**
