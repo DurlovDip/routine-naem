@@ -178,6 +178,42 @@ export async function fetchRemoteSchedule(): Promise<AppState | null> {
   return result.state;
 }
 
+async function deleteMissingTeachers(teachers: Teacher[]): Promise<string | null> {
+  if (teachers.length === 0) return null;
+  const { data: remoteRows, error } = await supabase.from(TEACHERS_TABLE).select("id");
+  if (error) return `Teachers: ${error.message}`;
+  if (!remoteRows) return null;
+  const activeIds = new Set(teachers.map((t) => t.id));
+  const toDelete = remoteRows.map((r: { id: string }) => r.id).filter((id) => !activeIds.has(id));
+  if (toDelete.length === 0) return null;
+  const { error: deleteErr } = await supabase.from(TEACHERS_TABLE).delete().in("id", toDelete);
+  return deleteErr ? `Teachers: ${deleteErr.message}` : null;
+}
+
+async function deleteMissingModules(modules: ModuleEntry[]): Promise<string | null> {
+  if (modules.length === 0) return null;
+  const { data: remoteRows, error } = await supabase.from(MODULES_TABLE).select("id");
+  if (error) return `Modules: ${error.message}`;
+  if (!remoteRows) return null;
+  const activeNumIds = new Set(modules.map((m, idx) => parseInt(m.id.replace(/\D/g, ""), 10) || (idx + 1)));
+  const toDelete = remoteRows.map((r: { id: number }) => r.id).filter((id) => !activeNumIds.has(id));
+  if (toDelete.length === 0) return null;
+  const { error: deleteErr } = await supabase.from(MODULES_TABLE).delete().in("id", toDelete);
+  return deleteErr ? `Modules: ${deleteErr.message}` : null;
+}
+
+async function deleteMissingBatches(batches: Batch[]): Promise<string | null> {
+  if (batches.length === 0) return null;
+  const { data: remoteRows, error } = await supabase.from(BATCHES_TABLE).select("id");
+  if (error) return `Batches: ${error.message}`;
+  if (!remoteRows) return null;
+  const activeNumIds = new Set(batches.map((b, idx) => parseInt(b.id.replace(/\D/g, ""), 10) || (idx + 1)));
+  const toDelete = remoteRows.map((r: { id: number }) => r.id).filter((id) => !activeNumIds.has(id));
+  if (toDelete.length === 0) return null;
+  const { error: deleteErr } = await supabase.from(BATCHES_TABLE).delete().in("id", toDelete);
+  return deleteErr ? `Batches: ${deleteErr.message}` : null;
+}
+
 async function syncTeachers(teachers: Teacher[], timestamp: string): Promise<string | null> {
   if (teachers.length === 0) return null;
 
@@ -200,7 +236,7 @@ async function syncTeachers(teachers: Teacher[], timestamp: string): Promise<str
     return `Teachers: ${upsertErr.message}`;
   }
 
-  return null;
+  return deleteMissingTeachers(teachers);
 }
 
 async function syncModules(modules: ModuleEntry[], timestamp: string): Promise<string | null> {
@@ -222,7 +258,7 @@ async function syncModules(modules: ModuleEntry[], timestamp: string): Promise<s
   });
   const { error: upsertErr } = await supabase.from(MODULES_TABLE).upsert(rows, { onConflict: "id" });
   if (upsertErr) return `Modules: ${upsertErr.message}`;
-  return null;
+  return deleteMissingModules(modules);
 }
 
 async function syncBatches(batches: Batch[], timestamp: string): Promise<string | null> {
@@ -239,7 +275,7 @@ async function syncBatches(batches: Batch[], timestamp: string): Promise<string 
   });
   const { error: upsertErr } = await supabase.from(BATCHES_TABLE).upsert(rows, { onConflict: "id" });
   if (upsertErr) return `Batches: ${upsertErr.message}`;
-  return null;
+  return deleteMissingBatches(batches);
 }
 
 
@@ -256,6 +292,10 @@ export async function upsertRemoteSchedule(
     const now = new Date().toISOString();
     const catalogs = options.catalogs !== false;
     const skipped: Promise<string | null> = Promise.resolve(null);
+
+    if (state.days.length === 0) {
+      return { ok: false, error: "Refusing to replace the live schedule with an empty one." };
+    }
 
     const [scheduleRes, teachersError, modulesError, batchesError] = await Promise.all([
       supabase.from(SCHEDULE_TABLE).upsert(
