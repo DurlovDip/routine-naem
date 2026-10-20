@@ -141,12 +141,12 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       const remote = await loadRemoteSchedule();
       if (!mounted) return;
 
-      cloudReady.current = true;
-
       if (remote.error) {
         setSyncStatus("error");
         return;
       }
+
+      cloudReady.current = true;
 
       if (remote.state) {
         applyRemote(remote.state);

@@ -71,4 +71,25 @@ describe("effective role", () => {
     expect(sql).toContain("change_pin");
     expect(sql).toContain("admin_reset_pin");
   });
+
+  it("keeps whole.sql from exposing pins or wiping the live schedule", () => {
+    const sql = readFileSync(new URL("../supabase/whole.sql", import.meta.url), "utf8");
+    expect(sql).not.toMatch(/grant select on public\.teachers to anon/i);
+    expect(sql).toContain("grant select (");
+    expect(sql).not.toMatch(/update public\.teachers set pin = '6832'\s*;/);
+    expect(sql).toMatch(/update public\.teachers set pin = '6832' where pin is null or btrim\(pin\) = ''/);
+    expect(sql).toContain("on conflict (id) do nothing");
+    expect(sql).not.toMatch(/drop table if exists public\.(teachers|modules|batches|schedules)/i);
+    expect(sql).toContain("login_with_pin");
+    expect(sql).toContain("change_pin");
+    expect(sql).toContain("admin_reset_pin");
+  });
+
+  it("does not let seed.sql overwrite live rows or reopen public write policies", () => {
+    const sql = readFileSync(new URL("../supabase/seed.sql", import.meta.url), "utf8");
+    expect(sql).not.toMatch(/do update/i);
+    expect(sql).not.toMatch(/create policy "Allow public all/i);
+    expect(sql).not.toMatch(/drop table if exists public\.(modules|batches)/i);
+    expect(sql).toContain("on conflict (id) do nothing");
+  });
 });

@@ -1,13 +1,19 @@
 -- ========================================================================
 -- ROUTINE-NAEM: Complete Master Schema (whole.sql)
--- Safe, idempotent script that sets up or updates the ENTIRE database.
--- Run this in your Supabase SQL Editor (https://supabase.com/dashboard).
+-- Idempotent setup for a NEW Supabase project, or a project that does not
+-- already have the live routine.
 --
--- This script is completely safe to run on:
---   1. A fresh, brand new Supabase project (sets up everything from scratch)
---   2. A partially migrated Supabase project (adds missing tables, columns,
---      functions, policies, or seeds without touching or deleting existing data)
---   3. An already up-to-date project (re-validates and keeps data intact)
+-- Do not run this whole file on the existing live project
+-- (cbvtuztqnfjinvwhdvif). It does not drop teachers, modules, batches, or
+-- schedules, and it does not reset PINs that are already set, but it does:
+--   * drop legacy public.profiles and public.coordinations if they exist
+--   * rewrite every teacher's Auth password hash to their current PIN
+--   * replace row-level policies
+-- On that live project, run supabase/lock_teacher_pin.sql instead.
+--
+-- Seeds use ON CONFLICT DO NOTHING, so an existing schedule row is kept.
+-- PIN values change only when pin is null or blank. The default is 6832.
+-- The pin column is not granted to anon or authenticated.
 -- ========================================================================
 
 -- ------------------------------------------------------------------------
@@ -910,9 +916,14 @@ grant execute on function public.access_directory() to authenticated;
 grant execute on function public.assign_teacher_role(text, text, date, date) to authenticated;
 grant execute on function public.effective_role(uuid) to authenticated;
 
--- Teachers table grants: allow authenticated users full CRUD (governed by RLS) and anon SELECT
-grant select on public.teachers to anon, authenticated;
-grant insert, update, delete on public.teachers to authenticated;
+-- Teachers: table-level SELECT would expose pin. Grant every column except pin.
+revoke all on table public.teachers from anon, authenticated;
+grant select (
+  id, name, designation, username, role, role_start, role_end, auth_user_id, created_at, updated_at
+) on public.teachers to anon, authenticated;
+grant insert (id, name, designation, updated_at) on public.teachers to authenticated;
+grant update (name, designation, updated_at) on public.teachers to authenticated;
+grant delete on public.teachers to authenticated;
 
 -- Modules, Batches, Schedules table grants
 grant select on public.modules to anon, authenticated;

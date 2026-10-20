@@ -158,6 +158,39 @@ export async function fetchRemoteSchedule(): Promise<AppState | null> {
   return result.state;
 }
 
+async function deleteMissingTeachers(teachers: Teacher[]) {
+  if (!supabase || teachers.length === 0) return;
+  const { data: remoteRows, error } = await supabase.from(TEACHERS_TABLE).select("id");
+  if (error || !remoteRows) return;
+  const activeIds = new Set(teachers.map((t) => t.id));
+  const toDelete = remoteRows.map((r: { id: string }) => r.id).filter((id) => !activeIds.has(id));
+  if (toDelete.length > 0) {
+    await supabase.from(TEACHERS_TABLE).delete().in("id", toDelete);
+  }
+}
+
+async function deleteMissingModules(modules: ModuleEntry[]) {
+  if (!supabase || modules.length === 0) return;
+  const { data: remoteRows, error } = await supabase.from(MODULES_TABLE).select("id");
+  if (error || !remoteRows) return;
+  const activeNumIds = new Set(modules.map((m, idx) => parseInt(m.id.replace(/\D/g, ""), 10) || (idx + 1)));
+  const toDelete = remoteRows.map((r: { id: number }) => r.id).filter((id) => !activeNumIds.has(id));
+  if (toDelete.length > 0) {
+    await supabase.from(MODULES_TABLE).delete().in("id", toDelete);
+  }
+}
+
+async function deleteMissingBatches(batches: Batch[]) {
+  if (!supabase || batches.length === 0) return;
+  const { data: remoteRows, error } = await supabase.from(BATCHES_TABLE).select("id");
+  if (error || !remoteRows) return;
+  const activeNumIds = new Set(batches.map((b, idx) => parseInt(b.id.replace(/\D/g, ""), 10) || (idx + 1)));
+  const toDelete = remoteRows.map((r: { id: number }) => r.id).filter((id) => !activeNumIds.has(id));
+  if (toDelete.length > 0) {
+    await supabase.from(BATCHES_TABLE).delete().in("id", toDelete);
+  }
+}
+
 async function syncTeachers(teachers: Teacher[], timestamp: string) {
   if (!supabase || teachers.length === 0) return;
 
@@ -176,6 +209,7 @@ async function syncTeachers(teachers: Teacher[], timestamp: string) {
     }));
     await supabase.from(TEACHERS_TABLE).upsert(fallbackRows, { onConflict: "id" }).select("id");
   }
+  await deleteMissingTeachers(teachers);
 }
 
 async function syncModules(modules: ModuleEntry[], timestamp: string) {
@@ -196,6 +230,7 @@ async function syncModules(modules: ModuleEntry[], timestamp: string) {
     };
   });
   await supabase.from(MODULES_TABLE).upsert(rows, { onConflict: "id" });
+  await deleteMissingModules(modules);
 }
 
 async function syncBatches(batches: Batch[], timestamp: string) {
@@ -211,6 +246,7 @@ async function syncBatches(batches: Batch[], timestamp: string) {
     };
   });
   await supabase.from(BATCHES_TABLE).upsert(rows, { onConflict: "id" });
+  await deleteMissingBatches(batches);
 }
 
 /**
@@ -226,6 +262,11 @@ export async function upsertRemoteSchedule(
   try {
     const now = new Date().toISOString();
     const catalogs = options.catalogs !== false;
+
+    if (state.days.length === 0) {
+      console.error("Refusing to replace the live schedule with an empty one.");
+      return false;
+    }
 
     const schedulePromise = supabase.from(SCHEDULE_TABLE).upsert(
       {
