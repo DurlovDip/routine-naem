@@ -3,6 +3,7 @@ import { Redirect } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
 import { useAccess } from "../../src/auth";
+import { FooterEditor } from "../../src/FooterEditor";
 import { buildTimeline, cellHasConflict, findConflicts, maxSpanFrom, rowCells, type SheetSession } from "../../src/lib/schedule";
 import { cleanBatchNumber, formatModuleCode, orderedManagers, parseModuleCode, rosterRange, sessionSpanLabel } from "../../src/lib/text";
 import { addDays, formatDayNumber, formatRange, formatSlashDate, isIsoDate, weekdayName } from "../../src/lib/time";
@@ -52,6 +53,7 @@ export default function EditorScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.desk }} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
       <HeaderEditor />
+      <FooterEditor />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, alignItems: "center" }}>
         {state.days.map((item) => {
           const on = item.id === day.id;

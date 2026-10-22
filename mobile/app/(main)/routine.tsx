@@ -1,11 +1,12 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ScrollView, View } from "react-native";
+import { Image, ScrollView, View } from "react-native";
 import { useAccess } from "../../src/auth";
 import { buildTimeline, rowCells, type SheetCell } from "../../src/lib/schedule";
 import { batchLines, cleanBatchNumber, formatModule, joinWithAnd, orderedManagers, sessionSpanLabel } from "../../src/lib/text";
-import { formatDayNumber, formatRange, formatSlashDate, weekdayName } from "../../src/lib/time";
+import { formatDayNumber, formatRange, formatSignatureDate, formatSlashDate, weekdayName } from "../../src/lib/time";
+import type { Footer } from "../../src/lib/types";
 import { downloadRoutine } from "../../src/pdf";
 import { useSchedule } from "../../src/store";
 import { colors } from "../../src/theme";
@@ -99,14 +100,49 @@ export default function RoutineScreen() {
       ) : mode === "list" ? (
         <ScrollView testID="routine-list" contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 28 }}>
           {rows.length === 0 ? <Empty /> : rows.map((row) => <BatchCard key={row.batch.id} row={row} timeline={timeline} recap={state.recapLabel} />)}
+          <SignatureBlock footer={state.footer} />
         </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
           <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ padding: 16 }}>
             <Table rows={rows} timeline={timeline} recap={state.recapLabel} />
           </ScrollView>
+          <View style={{ paddingHorizontal: 16 }}>
+            <SignatureBlock footer={state.footer} />
+          </View>
         </ScrollView>
       )}
+    </View>
+  );
+}
+
+function SignatureBlock({ footer }: { footer: Footer }) {
+  const lines = footer.lines.filter((line) => line.trim());
+  const visible = Boolean(footer.signature || footer.signatureDate || footer.name.trim() || lines.length);
+  if (!visible) return null;
+  return (
+    <View testID="routine-footer" style={{ marginTop: 8, alignItems: "flex-end" }}>
+      <View style={{ width: 220, alignItems: "center" }}>
+        {footer.signature ? (
+          <Image
+            source={{ uri: footer.signature }}
+            accessibilityIgnoresInvertColors
+            style={{ width: 176, height: 52, marginBottom: 4 }}
+            resizeMode="contain"
+          />
+        ) : (
+          <View style={{ height: 36 }} />
+        )}
+        {footer.signatureDate ? (
+          <T weight="bold" style={{ fontSize: 13, textAlign: "center" }}>{formatSignatureDate(footer.signatureDate)}</T>
+        ) : null}
+        {footer.name.trim() ? (
+          <T weight="bold" style={{ fontSize: 14, textAlign: "center" }}>{footer.name}</T>
+        ) : null}
+        {lines.map((line, index) => (
+          <T key={index} style={{ fontSize: 12, textAlign: "center", lineHeight: 16 }}>{line}</T>
+        ))}
+      </View>
     </View>
   );
 }

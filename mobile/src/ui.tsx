@@ -132,13 +132,15 @@ export function CheckRow({
   label,
   value,
   onChange,
+  testID,
 }: {
   label: string;
   value: boolean;
   onChange: (value: boolean) => void;
+  testID?: string;
 }) {
   return (
-    <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: value }} onPress={() => onChange(!value)} style={styles.check}>
+    <Pressable testID={testID} accessibilityRole="checkbox" accessibilityState={{ checked: value }} onPress={() => onChange(!value)} style={styles.check}>
       <View style={[styles.checkBox, value && styles.checkOn]}>{value ? <T style={styles.checkMark}>✓</T> : null}</View>
       <T style={{ flex: 1 }}>{label}</T>
     </Pressable>
