@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { createInitialState } from "../mobile/src/lib/demo.ts";
-import { headerStyleFromLabel, headerStyleLabel, isHeaderStyle } from "../mobile/src/lib/header.ts";
+import { courseTitleText, headerStyleFromLabel, headerStyleLabel, isHeaderStyle } from "../mobile/src/lib/header.ts";
 import { scheduleReducer } from "../mobile/src/lib/reducer.ts";
 import { canEditSchedule, effectiveRole } from "../mobile/src/lib/roles.ts";
 import { normalizeState } from "../mobile/src/lib/storage.ts";
@@ -15,6 +15,16 @@ describe("routine header editing", () => {
     assert.equal(headerStyleLabel("banner"), "");
     assert.equal(headerStyleFromLabel("Course title"), "title");
     assert.equal(headerStyleFromLabel("Clear"), null);
+    assert.equal(
+      courseTitleText([
+        { style: "normal", text: "National Academy for Educational Management" },
+        { style: "title", text: "Advanced Course on Skill Development" },
+        { style: "subtitle", text: "For cadre officers" },
+      ]),
+      "Advanced Course on Skill Development",
+    );
+    assert.equal(courseTitleText([{ style: "normal", text: "Only a plain line" }]), "Only a plain line");
+    assert.equal(courseTitleText([{ style: "title", text: "  " }, { style: "normal", text: "Fallback" }]), "Fallback");
     assert.equal(isHeaderStyle("subtitle"), true);
     assert.equal(isHeaderStyle("banner"), false);
   });
@@ -118,6 +128,12 @@ describe("routine header editing", () => {
     assert.match(headerEditor, /type: "add-header-line"/);
     const routine = readFileSync(new URL("../mobile/app/(main)/routine.tsx", import.meta.url), "utf8");
     assert.match(routine, /testID="routine-header"/);
-    assert.match(routine, /state\.header\.map/);
+    assert.match(routine, /useState\(false\)/);
+    assert.match(routine, /courseTitleText\(header\)/);
+    assert.match(routine, /lines\.map/);
+    assert.match(routine, /Signature & footer/);
+    assert.match(routine, /formatSlashDate\(day\.date\)/);
+    assert.match(routine, /downloadRoutine\(state, day\)/);
+    assert.doesNotMatch(routine, /canEdit \?[\s\S]{0,80}<RoutineHeader/);
   });
 });

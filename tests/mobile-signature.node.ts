@@ -147,8 +147,8 @@ describe("signature footer", () => {
     assert.match(pdf, /state\.footer\.lines/);
 
     const manifest = readFileSync(new URL("../mobile/app.json", import.meta.url), "utf8");
-    assert.match(manifest, /"version": "1.0.6"/);
-    assert.match(manifest, /"versionCode": 7/);
+    assert.match(manifest, /"version": "1.0.7"/);
+    assert.match(manifest, /"versionCode": 8/);
     assert.match(manifest, /READ_MEDIA_IMAGES/);
     assert.match(manifest, /expo-image-picker/);
     assert.doesNotMatch(manifest, /service_role/);

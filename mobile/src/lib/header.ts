@@ -19,3 +19,10 @@ export function headerStyleLabel(style: string): string {
 export function headerStyleFromLabel(label: string): HeaderStyle | null {
   return HEADER_STYLES.find((item) => item.label === label)?.value ?? null;
 }
+
+/** Course title for the collapsed Routine row: the first title line, else the first line. */
+export function courseTitleText(header: Array<{ style: string; text: string }>): string {
+  const title = header.find((line) => line.style === "title" && line.text.trim());
+  if (title) return title.text.trim();
+  return header.find((line) => line.text.trim())?.text.trim() ?? "";
+}
