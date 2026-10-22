@@ -2,6 +2,7 @@ import { Redirect } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
 import { useAccess, useAuth, type DirectoryRow } from "../../src/auth";
+import { CoursesPanel } from "../../src/CoursesPanel";
 import { useCourses } from "../../src/courses";
 import { courseOptionLabel, type CourseAssignment } from "../../src/lib/courses";
 import { addModuleEntry, withModules } from "../../src/catalog";
@@ -14,32 +15,28 @@ import { useSchedule } from "../../src/store";
 import { colors } from "../../src/theme";
 import { Button, Field, Label, Segmented, Select, T } from "../../src/ui";
 
-type Panel = "teachers" | "modules" | "batches" | "roles";
+type Panel = "courses" | "teachers" | "modules" | "batches" | "roles";
 type Assignable = Exclude<StoredRole, "super_admin">;
 
 export default function AdminScreen() {
   const access = useAccess();
-  const [panel, setPanel] = useState<Panel>("teachers");
+  const showCourses = access.role === "super_admin";
+  const [panel, setPanel] = useState<Panel>(showCourses ? "courses" : "teachers");
   if (!access.canAdmin) return <Redirect href="/(main)/routine" />;
+  const panels: { value: Panel; label: string }[] = [
+    ...(showCourses ? [{ value: "courses" as const, label: "Courses" }] : []),
+    { value: "teachers", label: "Teachers" },
+    { value: "modules", label: "Modules" },
+    { value: "batches", label: "Batches" },
+    { value: "roles", label: "Roles" },
+  ];
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.desk }}>
-      <View style={{ padding: 16, paddingBottom: 8, gap: 8 }}>
-        <T style={{ color: colors.muted, fontSize: 12 }}>
-          Courses are created, activated, and ended on the website.
-        </T>
-        <Segmented
-          label="Manage"
-          value={panel}
-          onChange={setPanel}
-          options={[
-            { value: "teachers", label: "Teachers" },
-            { value: "modules", label: "Modules" },
-            { value: "batches", label: "Batches" },
-            { value: "roles", label: "Roles" },
-          ]}
-        />
+      <View style={{ padding: 16, paddingBottom: 8 }}>
+        <Segmented scrollable label="Manage" value={panel} onChange={setPanel} options={panels} />
       </View>
+      {panel === "courses" && showCourses ? <CoursesPanel /> : null}
       {panel === "teachers" ? <TeachersPanel /> : null}
       {panel === "modules" ? <ModulesPanel /> : null}
       {panel === "batches" ? <BatchesPanel /> : null}

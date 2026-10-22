@@ -114,14 +114,24 @@ function screenshotSession(): SessionView {
     ? "teacher"
     : search.includes("role=temp")
       ? "temp_coordinator"
-      : "coordinator";
+      : search.includes("role=super")
+        ? "super_admin"
+        : "coordinator";
   const dated = role === "coordinator" || role === "temp_coordinator";
+  const teacherName =
+    role === "super_admin"
+      ? "Super admin"
+      : role === "teacher"
+        ? "Teacher"
+        : role === "temp_coordinator"
+          ? "Temporary coordinator"
+          : "Dr. Litan Kanti Halder";
   return {
     userId: "screenshot",
     username: role,
     email: syntheticEmail(role),
     teacherId: "screenshot",
-    teacherName: role === "teacher" ? "Teacher" : role === "temp_coordinator" ? "Temporary coordinator" : "Dr. Litan Kanti Halder",
+    teacherName,
     role,
     storedRole: role,
     roleStart: dated ? "2026-01-01" : null,

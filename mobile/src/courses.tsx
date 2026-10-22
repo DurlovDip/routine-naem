@@ -8,6 +8,7 @@ import {
   missingCoursesRpc,
   pickDefaultCourse,
   screenshotCourses,
+  type CourseDraft,
   type CourseSummary,
 } from "./lib/courses";
 import { canEditSchedule } from "./lib/roles";
@@ -22,6 +23,8 @@ type CourseApi = {
   error: string | null;
   selectCourse: (id: string) => void;
   reload: () => Promise<void>;
+  createCourse: (draft: CourseDraft) => Promise<string | null>;
+  updateCourse: (id: string, draft: CourseDraft) => Promise<string | null>;
 };
 
 const CourseContext = createContext<CourseApi | null>(null);
@@ -88,9 +91,93 @@ export function CourseProvider({ children }: { children: ReactNode }) {
     if (!screenshotMode) void AsyncStorage.setItem(STORAGE_KEY, id);
   }, []);
 
+  const createCourse = useCallback(
+    async (draft: CourseDraft) => {
+      try {
+        if (auth.session?.role !== "super_admin") return "Only a super admin can create a course.";
+        if (screenshotMode) {
+          const id = `course-local-${Date.now()}`;
+          setCourses((current) => [
+            {
+              id,
+              name: draft.name.trim(),
+              code: draft.code?.trim() ? draft.code.trim() : null,
+              status: draft.status,
+              startDate: draft.startDate,
+              endDate: draft.endDate,
+              scheduleId: id,
+              courseId: id,
+              canEdit: true,
+              updatedAt: new Date().toISOString(),
+            },
+            ...current,
+          ]);
+          setPreferredId(id);
+          return null;
+        }
+        const { data, error: rpcError } = await supabase.rpc("create_course", {
+          course_name: draft.name,
+          course_code: draft.code,
+          course_status: draft.status,
+          course_start: draft.startDate,
+          course_end: draft.endDate,
+        });
+        if (rpcError) return rpcError.message;
+        if (typeof data === "string") setPreferredId(data);
+        await reload();
+        return null;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+    [auth.session?.role, reload],
+  );
+
+  const updateCourse = useCallback(
+    async (id: string, draft: CourseDraft) => {
+      try {
+        if (auth.session?.role !== "super_admin") return "Only a super admin can change a course.";
+        if (screenshotMode) {
+          setCourses((current) =>
+            current.map((course) =>
+              course.id === id
+                ? {
+                    ...course,
+                    name: draft.name.trim(),
+                    code: draft.code?.trim() ? draft.code.trim() : null,
+                    status: draft.status,
+                    startDate: draft.startDate,
+                    endDate: draft.endDate,
+                    updatedAt: new Date().toISOString(),
+                  }
+                : course,
+            ),
+          );
+          return null;
+        }
+        const { error: writeError } = await supabase
+          .from("courses")
+          .update({
+            name: draft.name.trim(),
+            code: draft.code?.trim() ? draft.code.trim() : null,
+            status: draft.status,
+            start_date: draft.startDate,
+            end_date: draft.endDate,
+          })
+          .eq("id", id);
+        if (writeError) return writeError.message;
+        await reload();
+        return null;
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+    [auth.session?.role, reload],
+  );
+
   const value = useMemo<CourseApi>(
-    () => ({ courses, selected, ready, error, selectCourse, reload }),
-    [courses, selected, ready, error, selectCourse, reload],
+    () => ({ courses, selected, ready, error, selectCourse, reload, createCourse, updateCourse }),
+    [courses, selected, ready, error, selectCourse, reload, createCourse, updateCourse],
   );
 
   return <CourseContext.Provider value={value}>{children}</CourseContext.Provider>;

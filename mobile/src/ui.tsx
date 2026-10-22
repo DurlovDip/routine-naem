@@ -3,6 +3,7 @@ import {
   FlatList,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -100,30 +101,44 @@ export function Segmented<T extends string>({
   options,
   onChange,
   label,
+  scrollable = false,
 }: {
   value: T;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
   label: string;
+  scrollable?: boolean;
 }) {
+  const buttons = options.map((option) => {
+    const on = option.value === value;
+    return (
+      <Pressable
+        key={option.value}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: on }}
+        onPress={() => onChange(option.value)}
+        style={[scrollable ? styles.segmentBtnScroll : styles.segmentBtn, on && styles.segmentOn]}
+      >
+        <T numberOfLines={1} weight={on ? "semibold" : "medium"} style={{ color: on ? colors.accent : colors.muted, fontSize: 13 }}>
+          {option.label}
+        </T>
+      </Pressable>
+    );
+  });
   return (
-    <View accessibilityRole="tablist" accessibilityLabel={label} style={styles.segment}>
-      {options.map((option) => {
-        const on = option.value === value;
-        return (
-          <Pressable
-            key={option.value}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: on }}
-            onPress={() => onChange(option.value)}
-            style={[styles.segmentBtn, on && styles.segmentOn]}
-          >
-            <T weight={on ? "semibold" : "medium"} style={{ color: on ? colors.accent : colors.muted, fontSize: 13 }}>
-              {option.label}
-            </T>
-          </Pressable>
-        );
-      })}
+    <View accessibilityRole="tablist" accessibilityLabel={label} style={[styles.segment, scrollable && styles.segmentScrollable]}>
+      {scrollable ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.segmentScroller}
+          contentContainerStyle={styles.segmentScroll}
+        >
+          {buttons}
+        </ScrollView>
+      ) : (
+        buttons
+      )}
     </View>
   );
 }
@@ -253,7 +268,19 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     padding: 2,
   },
+  segmentScrollable: { flexDirection: "column", width: "100%", overflow: "hidden" },
+  segmentScroller: { width: "100%" },
+  segmentScroll: { flexDirection: "row", alignItems: "center" },
   segmentBtn: { flex: 1, alignItems: "center", paddingVertical: 7, borderRadius: 7 },
+  segmentBtnScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
+    flexBasis: "auto",
+    alignItems: "center",
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 7,
+  },
   segmentOn: { backgroundColor: colors.surface },
   check: { flexDirection: "row", alignItems: "center", gap: 8 },
   checkBox: {
