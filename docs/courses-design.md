@@ -53,7 +53,8 @@ The sheet's batches are already an array on the document (`id`, `name`, `numberO
 Repair:
 
 - Add `batches.course_id uuid not null references courses(id) on delete cascade`.
-- Replace the primary key `(id)` with `(course_id, id)`. Two courses may both have a 9th batch.
+- Replace the primary key `(id)` with `(course_id, id)`. The sheet JSON for two courses may both have a 9th batch.
+- Keep a unique index on `batches.id` (`batches_id_legacy_key`) so the installed app's `on conflict (id)` still runs. The integer catalog cannot repeat an id until that index is dropped. The printed sheet does not use this index.
 - Backfill existing catalog rows onto the course created from `schedules.id = 'default'`.
 - Reads and the super-admin mirror write filter by `course_id`. The document remains the sheet. An empty catalog does not replace the document's batches, which is the behavior the live project already depends on.
 
@@ -149,11 +150,25 @@ Default course: the saved choice if it is still visible, else the only visible c
 - **Mobile.** The same switcher is on the Routine tab and the Editor tab. The Routine banner stays the course title plus `Course Coordinator: name`. The Editor tab is hidden unless the selected course has `can_edit`. Course create / status is web-only; the Manage tab tells a super admin that courses are managed on the website.
 - **Before the migration is applied.** If `my_courses` is missing, the app still reads and writes `schedules.id = 'default'` and shows that as one active course. It does not send `course_id`, so an old database is not broken by the new client.
 
+## Legacy clients
+
+The web build and Android 1.0.8 that are installed today read and write `schedules.id = 'default'`. They do not send `course_id`. Their batch catalog upsert is `on conflict (id)`.
+
+`INSERT ... ON CONFLICT` checks `NOT NULL` before it takes the update path, so a missing `course_id` would reject the save. A before-insert trigger copies `course_id` from the existing `default` row (and, for a batch, from that course). `batches.id` stays unique so `on conflict (id)` still has an index to use. The printed batches inside each course's JSON can still repeat a number. The integer catalog cannot, until `batches_id_legacy_key` is dropped after 1.0.8 is gone.
+
+A coordinator assigned to the backfilled course can still load and save that row while the course is active. A teacher still cannot write it.
+
 ## What Durlov runs on the live project
 
-Run `supabase/migration_courses.sql` once in the Supabase SQL editor, after this app version is ready. It is safe to run a second time.
+Run `supabase/migration_courses.sql` once in the Supabase SQL editor. It is safe to run a second time. Do this before creating a second course.
 
-Do not run `supabase/whole.sql` or `supabase/seed.sql` on the live project. `whole.sql` is the fresh-install script and now includes this model so a new project does not need the migration file as a second step. It still rewrites Auth password hashes and replaces policies.
+Order:
+
+1. Run the migration. The current website and the installed 1.0.8 APK keep loading and saving the default routine.
+2. Deploy this web build.
+3. Install the 1.1.1 APK.
+
+Do not run `supabase/whole.sql` or `supabase/seed.sql` on the live project. `whole.sql` is the fresh-install script and now includes this model so a new project does not need the migration file as a second step. It still rewrites Auth password hashes and replaces policies. Create the second course from the new website, not from the old app: the old app deletes catalog batches by id alone.
 
 ## Open questions
 

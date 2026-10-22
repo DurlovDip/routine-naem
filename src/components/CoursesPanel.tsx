@@ -43,7 +43,7 @@ export function CoursesPanel() {
   }
 
   return (
-    <div className="access-panel" id="courses-panel">
+    <div className="access-panel courses-panel" id="courses-panel">
       <p className="hint">
         Several courses can be active at once. Teachers can read active and ended courses. Inactive courses are hidden from them. An ended course is read-only except for a super admin. Header, footer, and batches are saved with that course.
       </p>
@@ -54,67 +54,81 @@ export function CoursesPanel() {
           </button>
         ))}
       </div>
-      <div className="role-form">
-        <label>
-          <span className="field-label">New course</span>
-          <input
-            className="field"
-            aria-label="New course name"
-            value={draft.name}
-            onChange={(event) => setDraft({ ...draft, name: event.target.value })}
-          />
-        </label>
-        <label>
-          <span className="field-label">Short name</span>
-          <input
-            className="field"
-            aria-label="New course short name"
-            value={draft.code ?? ""}
-            onChange={(event) => setDraft({ ...draft, code: event.target.value })}
-          />
-        </label>
-        <label>
-          <span className="field-label">Starts</span>
-          <input
-            className="field"
-            type="date"
-            aria-label="New course start"
-            value={draft.startDate ?? ""}
-            onChange={(event) => setDraft({ ...draft, startDate: event.target.value })}
-          />
-        </label>
-        <label>
-          <span className="field-label">Ends</span>
-          <input
-            className="field"
-            type="date"
-            aria-label="New course end"
-            value={draft.endDate ?? ""}
-            onChange={(event) => setDraft({ ...draft, endDate: event.target.value })}
-          />
-        </label>
-        <label>
-          <span className="field-label">Status</span>
-          <select
-            className="field"
-            aria-label="New course status"
-            value={draft.status}
-            onChange={(event) => {
-              if (isCourseStatus(event.target.value)) setDraft({ ...draft, status: event.target.value });
-            }}
-          >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="ended">Ended</option>
-          </select>
-        </label>
-        <Button tone="primary" disabled={busy || !draft.name.trim()} onClick={() => void create()}>
-          {busy ? "Saving…" : "Create course"}
-        </Button>
-      </div>
+      <form
+        className="course-card course-create"
+        aria-labelledby="new-course-heading"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void create();
+        }}
+      >
+        <div className="course-card-head">
+          <h3 id="new-course-heading">New course</h3>
+        </div>
+        <div className="course-fields">
+          <label>
+            <span className="field-label">Name</span>
+            <input
+              className="field"
+              aria-label="New course name"
+              value={draft.name}
+              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+            />
+          </label>
+          <label>
+            <span className="field-label">Short name</span>
+            <input
+              className="field"
+              aria-label="New course short name"
+              value={draft.code ?? ""}
+              onChange={(event) => setDraft({ ...draft, code: event.target.value })}
+            />
+          </label>
+          <label>
+            <span className="field-label">Starts</span>
+            <input
+              className="field"
+              type="date"
+              aria-label="New course start"
+              value={draft.startDate ?? ""}
+              onChange={(event) => setDraft({ ...draft, startDate: event.target.value })}
+            />
+          </label>
+          <label>
+            <span className="field-label">Ends</span>
+            <input
+              className="field"
+              type="date"
+              aria-label="New course end"
+              value={draft.endDate ?? ""}
+              onChange={(event) => setDraft({ ...draft, endDate: event.target.value })}
+            />
+          </label>
+        </div>
+        <div className="course-actions">
+          <label className="course-status-field">
+            <span className="field-label">Status</span>
+            <select
+              className="field"
+              aria-label="New course status"
+              value={draft.status}
+              onChange={(event) => {
+                if (isCourseStatus(event.target.value)) setDraft({ ...draft, status: event.target.value });
+              }}
+            >
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+              <option value="ended">Ended</option>
+            </select>
+          </label>
+          <Button tone="primary" type="submit" disabled={busy || !draft.name.trim()}>
+            {busy ? "Saving…" : "Create course"}
+          </Button>
+        </div>
+      </form>
       {error ? <p className="auth-error">{error}</p> : null}
       {shown.length === 0 ? <p className="hint">No courses in this filter.</p> : null}
-      <ul className="account-list">
+      <ul className="course-list">
         {shown.map((course) => (
           <CourseRow
             key={course.id}
@@ -155,16 +169,16 @@ function CourseRow({
   }
 
   return (
-    <li className="account-row role-row">
-      <div>
+    <li className="course-card">
+      <div className="course-card-head">
         <strong>{course.name}</strong>
-        <span className="hint">
-          {courseStatusLabel(course.status)}
+        <span className={`course-badge course-badge-${draft.status}`}>
+          {courseStatusLabel(draft.status)}
           {current ? " · open" : ""}
           {course.canEdit ? "" : " · read only"}
         </span>
       </div>
-      <div className="role-form">
+      <div className="course-fields">
         <label>
           <span className="field-label">Name</span>
           <input
@@ -203,6 +217,21 @@ function CourseRow({
             onChange={(event) => setDraft({ ...draft, endDate: event.target.value })}
           />
         </label>
+      </div>
+      <div className="course-actions">
+        <div className="segmented" role="group" aria-label={`Status for ${course.name}`}>
+          {(["active", "inactive", "ended"] as const).map((status) => (
+            <button
+              key={status}
+              type="button"
+              aria-pressed={draft.status === status}
+              disabled={busy}
+              onClick={() => setStatus(status)}
+            >
+              {courseStatusLabel(status)}
+            </button>
+          ))}
+        </div>
         <Button
           tone="primary"
           disabled={busy || !draft.name.trim()}
@@ -216,19 +245,6 @@ function CourseRow({
         <Button disabled={current} onClick={onOpen}>
           Open routine
         </Button>
-      </div>
-      <div className="segmented" role="group" aria-label={`Status for ${course.name}`}>
-        {(["active", "inactive", "ended"] as const).map((status) => (
-          <button
-            key={status}
-            type="button"
-            aria-pressed={draft.status === status}
-            disabled={busy}
-            onClick={() => setStatus(status)}
-          >
-            {courseStatusLabel(status)}
-          </button>
-        ))}
       </div>
     </li>
   );

@@ -274,7 +274,7 @@ function Shell() {
               <GridEditor day={day} />
             </div>
             {auth.session?.role === "super_admin" ? (
-              <Section title="Courses" summary="Create and set status" defaultOpen>
+              <Section className="courses-section" title="Courses" summary="Create and set status" defaultOpen>
                 <CoursesPanel />
               </Section>
             ) : null}

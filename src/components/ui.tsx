@@ -37,16 +37,18 @@ export function Section({
   title,
   summary,
   defaultOpen = false,
+  className,
   children,
 }: {
   title: string;
   summary?: string;
   defaultOpen?: boolean;
+  className?: string;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <section className="section">
+    <section className={cx("section", className)}>
       <button
         type="button"
         className="section-toggle"

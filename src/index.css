@@ -734,6 +734,91 @@ button { cursor: pointer; }
 }
 .role-form .field { min-width: 9.5rem; }
 .role-form .btn { min-height: 42px; }
+
+.courses-section {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+}
+.courses-section .section-body { padding-top: 0.9rem; }
+.course-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+.course-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.course-card h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.course-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+.course-card-head strong { font-weight: 650; }
+.course-badge {
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+.course-badge-inactive { background: var(--desk); color: var(--muted); }
+.course-badge-ended { background: #f8efe0; color: var(--warn); }
+.course-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem 0.65rem;
+}
+.course-fields label,
+.course-status-field {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.course-fields .field,
+.course-status-field .field {
+  width: 100%;
+  min-width: 0;
+}
+.course-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.course-actions .segmented { flex: 0 0 auto; }
+.course-actions .btn { flex: 0 0 auto; min-height: 36px; }
+@media (max-width: 720px) {
+  .course-fields { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 420px) {
+  .course-card-head { align-items: flex-start; }
+  .course-fields { grid-template-columns: 1fr; }
+  .course-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .course-actions .segmented,
+  .course-actions .btn,
+  .course-status-field { width: 100%; }
+}
 .delegation-form { display: grid; gap: 0.7rem; }
 .delegation-form .segmented { width: 100%; }
 .delegation-form .segmented button { flex: 1; min-height: 44px; }
@@ -929,7 +1014,7 @@ button { cursor: pointer; }
     grid-column: 1;
     display: block;
     font-size: 0.68rem;
-    font-weight: 650;
+    font-weight: 600;
     line-height: 1.1;
     white-space: nowrap;
   }

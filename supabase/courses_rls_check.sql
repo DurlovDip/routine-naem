@@ -279,6 +279,7 @@ values
 do $$
 declare
   n int;
+  original_data jsonb;
   default_course uuid;
   other_course uuid := 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2';
   inactive_course uuid := 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3';
@@ -407,6 +408,85 @@ begin
   end if;
   if (select count(*) from public.courses where status = 'active') < 2 then
     raise exception 'multiple active courses were not kept';
+  end if;
+
+  -- Installed web and 1.0.8 APK: read and upsert id = default with no course_id.
+  perform set_config('request.jwt.claim.sub', coord_uid, true);
+  execute 'set local role authenticated';
+
+  select count(*) into n from public.schedules where id = 'default';
+  if n <> 1 then
+    raise exception 'legacy client could not load schedules.id = default';
+  end if;
+
+  select data into original_data from public.schedules where id = 'default';
+
+  insert into public.schedules (id, data, updated_at)
+  values (
+    'default',
+    jsonb_set(original_data, '{legacyProbe}', 'true'::jsonb),
+    now()
+  )
+  on conflict (id) do update
+  set data = excluded.data,
+      updated_at = excluded.updated_at;
+
+  if (select course_id from public.schedules where id = 'default') is distinct from default_course then
+    raise exception 'legacy schedule upsert changed course_id';
+  end if;
+  if (select data -> 'legacyProbe' from public.schedules where id = 'default') is distinct from 'true'::jsonb then
+    raise exception 'legacy schedule upsert did not save';
+  end if;
+  if (select data -> 'days' -> 0 -> 'cells' -> 'batch-9:s1' ->> 'note' from public.schedules where id = 'default') is distinct from 'keep-me' then
+    raise exception 'legacy schedule upsert dropped existing cells';
+  end if;
+
+  insert into public.batches (id, name, number_of_students)
+  values (9, 'legacy-name', 41)
+  on conflict (id) do update
+  set name = excluded.name,
+      number_of_students = excluded.number_of_students;
+
+  if (select course_id from public.batches where id = 9) is distinct from default_course then
+    raise exception 'legacy batch upsert changed course_id';
+  end if;
+  if (select name from public.batches where id = 9) is distinct from 'legacy-name' then
+    raise exception 'legacy batch upsert did not save';
+  end if;
+
+  insert into public.batches (id, name, number_of_students)
+  values (99, 'legacy-new', 12)
+  on conflict (id) do update
+  set name = excluded.name;
+
+  if (select course_id from public.batches where id = 99) is distinct from default_course then
+    raise exception 'legacy batch insert did not attach the default course';
+  end if;
+
+  update public.schedules
+  set data = original_data
+  where id = 'default';
+  update public.batches set name = '', number_of_students = 40 where id = 9;
+  delete from public.batches where id = 99;
+
+  execute 'reset role';
+  perform set_config('request.jwt.claim.sub', teacher_uid, true);
+  execute 'set local role authenticated';
+  begin
+    insert into public.schedules (id, data, updated_at)
+    values ('default', '{"days":[]}'::jsonb, now())
+    on conflict (id) do update
+    set data = excluded.data,
+        updated_at = excluded.updated_at;
+    raise exception 'teacher legacy upsert wrote the default schedule';
+  exception
+    when insufficient_privilege then
+      null;
+  end;
+  execute 'reset role';
+
+  if (select data -> 'legacyProbe' from public.schedules where id = 'default') is not null then
+    raise exception 'legacy probe was left in the schedule';
   end if;
 end $$;
 

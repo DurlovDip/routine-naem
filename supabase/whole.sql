@@ -1143,6 +1143,7 @@ select
 -- Same statements as supabase/migration_courses.sql so a new database
 -- matches the live migration. Live projects run that file alone.
 -- ------------------------------------------------------------------------
+
 -- ========================================================================
 -- ROUTINE-NAEM: Courses
 -- Run this once in the Supabase SQL editor on the LIVE project.
@@ -1156,6 +1157,9 @@ select
 --     The existing id = 'default' row is kept and linked, not copied.
 --   * Printed batches, header, and footer stay inside that course's JSON.
 --     public.batches gains course_id and primary key (course_id, id).
+--     batches.id stays unique so the installed 1.0.8 app can still upsert
+--     on conflict (id). A before-insert trigger fills a missing course_id
+--     so that upsert is not rejected by NOT NULL.
 --   * Coordinators are assigned per course in course_assignments
 --     (Durlov: switch to a single teachers.course_id if one course per person).
 -- ========================================================================
@@ -1431,6 +1435,63 @@ begin
     alter table public.batches add constraint batches_pkey primary key (course_id, id);
   end if;
 end $$;
+
+-- The installed web app and 1.0.8 APK upsert by id and do not send course_id.
+-- INSERT ... ON CONFLICT checks NOT NULL before it takes the update path,
+-- and ON CONFLICT (id) needs a unique index on id.
+do $$
+begin
+  if exists (select 1 from public.batches group by id having count(*) > 1) then
+    raise exception 'batches.id is duplicated across courses. The installed app upserts on id, so resolve the duplicates before re-running.';
+  end if;
+end $$;
+
+create unique index if not exists batches_id_legacy_key on public.batches (id);
+
+create or replace function public.schedules_fill_course_id()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.course_id is null then
+    select existing.course_id into new.course_id
+    from public.schedules existing
+    where existing.id = new.id;
+  end if;
+  return new;
+end;
+$$;
+
+create or replace function public.batches_fill_course_id()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.course_id is null then
+    select schedule.course_id into new.course_id
+    from public.schedules schedule
+    where schedule.id = 'default';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists schedules_fill_course_id on public.schedules;
+create trigger schedules_fill_course_id
+  before insert on public.schedules
+  for each row execute function public.schedules_fill_course_id();
+
+drop trigger if exists batches_fill_course_id on public.batches;
+create trigger batches_fill_course_id
+  before insert on public.batches
+  for each row execute function public.batches_fill_course_id();
+
+revoke all on function public.schedules_fill_course_id() from public;
+revoke all on function public.batches_fill_course_id() from public;
 
 -- ------------------------------------------------------------------------
 -- 6. FUNCTIONS
