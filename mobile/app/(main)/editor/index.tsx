@@ -1,18 +1,19 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { Redirect } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, View } from "react-native";
-import { useAccess } from "../../src/auth";
-import { buildTimeline, cellHasConflict, findConflicts, maxSpanFrom, rowCells, type SheetSession } from "../../src/lib/schedule";
-import { cleanBatchNumber, formatModuleCode, orderedManagers, parseModuleCode, rosterRange, sessionSpanLabel } from "../../src/lib/text";
-import { addDays, formatDayNumber, formatRange, formatSlashDate, isIsoDate, weekdayName } from "../../src/lib/time";
-import type { Batch, CellContent, DayPlan } from "../../src/lib/types";
-import { useSchedule } from "../../src/store";
-import { colors } from "../../src/theme";
-import { Button, CheckRow, Field, Label, Select, T } from "../../src/ui";
+import { Alert, Pressable, ScrollView, View } from "react-native";
+import { useAccess } from "../../../src/auth";
+import { buildTimeline, cellHasConflict, findConflicts, maxSpanFrom, rowCells, type SheetSession } from "../../../src/lib/schedule";
+import { cleanBatchNumber, formatModuleCode, orderedManagers, parseModuleCode, rosterRange, sessionSpanLabel } from "../../../src/lib/text";
+import { addDays, formatDayNumber, formatRange, formatSlashDate, isIsoDate, weekdayName } from "../../../src/lib/time";
+import type { Batch, CellContent, DayPlan } from "../../../src/lib/types";
+import { useSchedule } from "../../../src/store";
+import { colors } from "../../../src/theme";
+import { Button, CheckRow, Field, Label, Select, T } from "../../../src/ui";
 
 export default function EditorScreen() {
   const access = useAccess();
+  const router = useRouter();
   const { state, dispatch, day } = useSchedule();
   const [batchId, setBatchId] = useState(state.batches[0]?.id ?? "");
   const [dateText, setDateText] = useState(day.date);
@@ -50,6 +51,33 @@ export default function EditorScreen() {
 
   return (
     <ScrollView style={{ flex: 1, backgroundColor: colors.desk }} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+      <Pressable
+        testID="open-header-footer"
+        accessibilityRole="button"
+        accessibilityLabel="Header and footer"
+        onPress={() => router.push("/(main)/editor/header-footer")}
+        style={{
+          backgroundColor: colors.surface,
+          borderWidth: 1,
+          borderColor: colors.line,
+          borderRadius: 12,
+          borderLeftWidth: 3,
+          borderLeftColor: colors.accent,
+          paddingHorizontal: 12,
+          paddingVertical: 12,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+        }}
+      >
+        <View style={{ flex: 1, gap: 2 }}>
+          <T weight="bold" style={{ color: colors.accent, fontSize: 15 }}>Header & footer</T>
+          <T style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>
+            Course title, signature, and designation
+          </T>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+      </Pressable>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, alignItems: "center" }}>
         {state.days.map((item) => {
           const on = item.id === day.id;

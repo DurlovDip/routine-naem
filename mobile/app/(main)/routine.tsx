@@ -2,7 +2,8 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
-import { useAccess } from "../../src/auth";
+import { useAccess, useAuth } from "../../src/auth";
+import { routineCoordinatorLabel, routineCourseLabel } from "../../src/lib/header";
 import { buildTimeline, rowCells, type SheetCell } from "../../src/lib/schedule";
 import { batchLines, cleanBatchNumber, formatModule, joinWithAnd, orderedManagers, sessionSpanLabel } from "../../src/lib/text";
 import { formatDayNumber, formatRange, formatSlashDate, weekdayName } from "../../src/lib/time";
@@ -16,10 +17,16 @@ type ViewMode = "list" | "table";
 export default function RoutineScreen() {
   const router = useRouter();
   const access = useAccess();
+  const auth = useAuth();
   const { state, dispatch, day, hydrated } = useSchedule();
+  const assignedCoordinator =
+    auth.session && (auth.session.role === "coordinator" || auth.session.role === "temp_coordinator")
+      ? auth.session.teacherName
+      : "";
+  const course = routineCourseLabel(state.header, state.footer.courseName ?? "");
+  const coordinator = routineCoordinatorLabel(state.footer.name, assignedCoordinator);
   const [mode, setMode] = useState<ViewMode>("list");
   const timeline = buildTimeline(day);
-  const title = state.header.find((line) => line.style === "title")?.text;
   const rows = state.batches.map((batch) => ({
     batch,
     managers: orderedManagers(batch.roster, day.managers[batch.id] ?? []),
@@ -52,8 +59,21 @@ export default function RoutineScreen() {
             />
           ) : null}
         </ScrollView>
-        <View style={{ paddingHorizontal: 16, gap: 8 }}>
-          {title ? <T weight="semibold" style={{ fontSize: 13 }}>{title}</T> : null}
+        <View style={{ paddingHorizontal: 16, gap: 6 }}>
+          {course || coordinator ? (
+            <View testID="routine-banner" style={{ gap: 1 }}>
+              {course ? (
+                <T weight="bold" numberOfLines={2} style={{ fontSize: 16, lineHeight: 20 }}>
+                  {course}
+                </T>
+              ) : null}
+              {coordinator ? (
+                <T numberOfLines={1} style={{ color: colors.muted, fontSize: 12, lineHeight: 16 }}>
+                  {coordinator}
+                </T>
+              ) : null}
+            </View>
+          ) : null}
           <T style={{ color: colors.muted, fontSize: 12 }}>
             {formatSlashDate(day.date)}
             {weekdayName(day.date) ? ` · ${weekdayName(day.date)}` : ""} · {formatDayNumber(day.dayNumber)}
