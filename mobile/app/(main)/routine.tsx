@@ -3,6 +3,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useAccess, useAuth } from "../../src/auth";
+import { CourseSwitcher } from "../../src/CourseSwitcher";
 import { routineCoordinatorLabel, routineCourseLabel } from "../../src/lib/header";
 import { buildTimeline, rowCells, type SheetCell } from "../../src/lib/schedule";
 import { batchLines, cleanBatchNumber, formatModule, joinWithAnd, orderedManagers, sessionSpanLabel } from "../../src/lib/text";
@@ -36,6 +37,7 @@ export default function RoutineScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.desk }}>
       <View style={{ paddingTop: 12, gap: 10 }}>
+        <CourseSwitcher />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16, alignItems: "center" }}>
           {state.days.map((item) => {
             const on = item.id === day.id;

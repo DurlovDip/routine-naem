@@ -2,6 +2,8 @@ import { Redirect } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, ScrollView, View } from "react-native";
 import { useAccess, useAuth, type DirectoryRow } from "../../src/auth";
+import { useCourses } from "../../src/courses";
+import { courseOptionLabel, type CourseAssignment } from "../../src/lib/courses";
 import { addModuleEntry, withModules } from "../../src/catalog";
 import { roleLabel, type StoredRole } from "../../src/lib/roles";
 import { cleanBatchNumber, formatModuleCode, normalizeModuleNumber, normalizeSubNumber } from "../../src/lib/text";
@@ -22,7 +24,10 @@ export default function AdminScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.desk }}>
-      <View style={{ padding: 16, paddingBottom: 8 }}>
+      <View style={{ padding: 16, paddingBottom: 8, gap: 8 }}>
+        <T style={{ color: colors.muted, fontSize: 12 }}>
+          Courses are created, activated, and ended on the website.
+        </T>
         <Segmented
           label="Manage"
           value={panel}
@@ -268,13 +273,21 @@ function BatchesPanel() {
 
 function RolesPanel() {
   const auth = useAuth();
+  const courses = useCourses();
   const [rows, setRows] = useState<DirectoryRow[]>([]);
+  const [assignments, setAssignments] = useState<CourseAssignment[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
     try {
       setRows(await auth.directory());
-      setError(null);
+      try {
+        setAssignments(await auth.courseAssignments());
+        setError(null);
+      } catch (err) {
+        setAssignments([]);
+        setError(err instanceof Error ? err.message : String(err));
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -287,19 +300,22 @@ function RolesPanel() {
   return (
     <ScrollView contentContainerStyle={{ padding: 16, gap: 10, paddingBottom: 28 }}>
       <T style={{ color: colors.muted, fontSize: 12 }}>
-        Coordinator dates use Asia/Dhaka. Outside the range the person acts as a teacher. Reset PIN sets a new 4-digit PIN.
+        Assign a coordinator to one course for a date range in Asia/Dhaka. Outside that range the person acts as a teacher for that course. A person can coordinate more than one course. Reset PIN sets a new 4-digit PIN.
       </T>
       {error ? <T style={{ color: colors.danger }}>{error}</T> : null}
       {rows.map((row) => (
         <RoleRow
           key={row.teacherId}
           row={row}
-          onSave={async (role, start, end) => {
-            const message = await auth.assignRole(row.teacherId, role, start, end);
+          courses={courses.courses}
+          assignments={assignments.filter((item) => item.teacherId === row.teacherId)}
+          onSave={async (role, start, end, courseId) => {
+            const message = await auth.assignCourseRole(row.teacherId, role, start, end, courseId);
             if (message) setError(message);
             else {
               setError(null);
               await load();
+              await courses.reload();
             }
           }}
         />
@@ -358,17 +374,27 @@ function PinReset({ teacherId, teacherName }: { teacherId: string; teacherName: 
 
 function RoleRow({
   row,
+  courses,
+  assignments,
   onSave,
 }: {
   row: DirectoryRow;
-  onSave: (role: Assignable, start: string | null, end: string | null) => Promise<void>;
+  courses: Array<{ id: string; name: string; code: string | null; status: "active" | "inactive" | "ended" }>;
+  assignments: CourseAssignment[];
+  onSave: (role: Assignable, start: string | null, end: string | null, courseId: string | null) => Promise<void>;
 }) {
-  const initial = row.storedRole === "super_admin" ? "teacher" : row.storedRole;
+  const initialAssignment = assignments[0];
+  const initial = initialAssignment?.role ?? (row.storedRole === "super_admin" ? "teacher" : row.storedRole);
   const [role, setRole] = useState<Assignable>(initial);
-  const [start, setStart] = useState(row.roleStart ?? "");
-  const [end, setEnd] = useState(row.roleEnd ?? "");
+  const [courseId, setCourseId] = useState(initialAssignment?.courseId ?? courses[0]?.id ?? "");
+  const [start, setStart] = useState(initialAssignment?.roleStart ?? row.roleStart ?? "");
+  const [end, setEnd] = useState(initialAssignment?.roleEnd ?? row.roleEnd ?? "");
   const [busy, setBusy] = useState(false);
   const dated = role === "coordinator" || role === "temp_coordinator";
+
+  useEffect(() => {
+    if (!courseId && courses[0]) setCourseId(courses[0].id);
+  }, [courseId, courses]);
   const note =
     row.storedRole === row.role ? roleLabel(row.role) : `${roleLabel(row.storedRole)} stored · ${roleLabel(row.role)} today`;
 
@@ -388,10 +414,30 @@ function RoleRow({
       <T style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
         PIN sign-in · {note}
       </T>
+      <Label>Course</Label>
+      <Select
+        label={`Course for ${row.teacherName}`}
+        value={courseOptionLabel(courses.find((course) => course.id === courseId) ?? { name: "Choose a course", code: null, status: "active" })}
+        options={courses.map((course) => courseOptionLabel(course))}
+        allowEmpty={false}
+        onChange={(value) => {
+          const next = courses.find((course) => courseOptionLabel(course) === value);
+          if (!next) return;
+          setCourseId(next.id);
+          const existing = assignments.find((item) => item.courseId === next.id);
+          if (existing) {
+            setRole(existing.role);
+            setStart(existing.roleStart);
+            setEnd(existing.roleEnd);
+          }
+        }}
+      />
+      <View style={{ height: 8 }} />
       <Select
         label={`Role for ${row.teacherName}`}
         value={role === "temp_coordinator" ? "Temporary coordinator" : role === "coordinator" ? "Coordinator" : "Teacher"}
         options={["Teacher", "Coordinator", "Temporary coordinator"]}
+        allowEmpty={false}
         onChange={(value) => {
           if (value === "Coordinator") setRole("coordinator");
           else if (value === "Temporary coordinator") setRole("temp_coordinator");
@@ -414,10 +460,10 @@ function RoleRow({
         <Button
           label={busy ? "Saving…" : "Save role"}
           tone="primary"
-          disabled={busy || (dated && (!isIsoDate(start) || !isIsoDate(end)))}
+          disabled={busy || (dated && (!courseId || !isIsoDate(start) || !isIsoDate(end)))}
           onPress={() => {
             setBusy(true);
-            void onSave(role, dated ? start : null, dated ? end : null).finally(() => setBusy(false));
+            void onSave(role, dated ? start : null, dated ? end : null, courseId || null).finally(() => setBusy(false));
           }}
         />
       </View>

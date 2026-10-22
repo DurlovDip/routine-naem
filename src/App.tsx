@@ -1,8 +1,11 @@
 import { useRef, useState } from "react";
 import { CopyPlus, FileDown, LogIn, LogOut, Menu, Printer, Trash2, X } from "lucide-react";
 import { AuthProvider, useAuth } from "./auth";
+import { CourseProvider, useCourses } from "./courses";
 import { DesignationsProvider } from "./designations";
 import { PeopleSection } from "./components/AccessPanels";
+import { CoursesPanel } from "./components/CoursesPanel";
+import { CourseSwitcher } from "./components/CourseSwitcher";
 import { AuthScreen, ChangePinDialog } from "./components/AuthScreen";
 import { BatchEditor, FooterEditor, HeaderEditor, LibraryEditor, StructureEditor } from "./components/panels";
 import { GridEditor } from "./components/GridEditor";
@@ -23,8 +26,10 @@ function readHash(): Mode {
 function Shell() {
   const { state, dispatch, day } = useSchedule();
   const auth = useAuth();
+  const courses = useCourses();
   const role = auth.session?.role;
-  const canEdit = !auth.required || role === "super_admin" || role === "coordinator" || role === "temp_coordinator";
+  const roleCanEdit = !auth.required || role === "super_admin" || role === "coordinator" || role === "temp_coordinator";
+  const canEdit = courses.ready && courses.courses.length > 0 ? Boolean(courses.selected?.canEdit) : roleCanEdit;
   const canManageCatalog = !auth.required || role === "super_admin";
 
   const nextDate = addDays(day.date, 1);
@@ -60,6 +65,7 @@ function Shell() {
             {auth.session ? `${auth.session.teacherName} · ${roleLabel(auth.session.role)}` : "Class routine for the training course"}
           </div>
         </div>
+        <CourseSwitcher />
         <button
           type="button"
           className="toolbar-menu-btn"
@@ -268,7 +274,12 @@ function Shell() {
               <GridEditor day={day} />
             </div>
             {auth.session?.role === "super_admin" ? (
-              <Section title="Roles" summary="Assign a date range">
+              <Section title="Courses" summary="Create and set status" defaultOpen>
+                <CoursesPanel />
+              </Section>
+            ) : null}
+            {auth.session?.role === "super_admin" ? (
+              <Section title="Roles" summary="Assign a course and dates">
                 <PeopleSection />
               </Section>
             ) : null}
@@ -356,9 +367,11 @@ function Gate() {
 export default function App() {
   return (
     <AuthProvider>
-      <ScheduleProvider>
-        <Gate />
-      </ScheduleProvider>
+      <CourseProvider>
+        <ScheduleProvider>
+          <Gate />
+        </ScheduleProvider>
+      </CourseProvider>
     </AuthProvider>
   );
 }

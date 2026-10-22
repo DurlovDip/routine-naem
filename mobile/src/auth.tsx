@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { screenshotMode } from "./flags";
+import type { CourseAssignment } from "./lib/courses";
 import { supabase } from "./lib/supabase";
 import { canEditSchedule, pinError, syntheticEmail, type AppRole, type StoredRole } from "./lib/roles";
 
@@ -43,6 +44,14 @@ type AuthValue = {
     roleStart: string | null,
     roleEnd: string | null,
   ) => Promise<string | null>;
+  assignCourseRole: (
+    teacherId: string,
+    role: Exclude<StoredRole, "super_admin">,
+    roleStart: string | null,
+    roleEnd: string | null,
+    courseId: string | null,
+  ) => Promise<string | null>;
+  courseAssignments: () => Promise<CourseAssignment[]>;
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -237,6 +246,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const courseAssignments = useCallback(async () => {
+    if (screenshotMode) return [];
+    const { data, error } = await supabase.rpc("list_course_assignments");
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+      teacherId: String(row.teacher_id),
+      courseId: String(row.course_id),
+      role: row.role === "temp_coordinator" ? "temp_coordinator" as const : "coordinator" as const,
+      roleStart: String(row.role_start).slice(0, 10),
+      roleEnd: String(row.role_end).slice(0, 10),
+    }));
+  }, []);
+
+  const assignCourseRole = useCallback(
+    async (
+      teacherId: string,
+      role: Exclude<StoredRole, "super_admin">,
+      roleStart: string | null,
+      roleEnd: string | null,
+      courseId: string | null,
+    ) => {
+      if (screenshotMode) return null;
+      const { error } = await supabase.rpc("assign_course_role", {
+        target_teacher: teacherId,
+        next_role: role,
+        start_on: roleStart,
+        end_on: roleEnd,
+        target_course: courseId,
+      });
+      if (!error) {
+        try {
+          setSession(await readSupabaseSession());
+        } catch {
+          // The directory reload still shows the saved role.
+        }
+      }
+      return error ? error.message : null;
+    },
+    [],
+  );
+
   const value = useMemo<AuthValue>(
     () => ({
       ready,
@@ -249,8 +299,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInTeachers,
       directory,
       assignRole,
+      assignCourseRole,
+      courseAssignments,
     }),
-    [ready, session, notice, signIn, changePin, adminResetPin, signOut, signInTeachers, directory, assignRole],
+    [ready, session, notice, signIn, changePin, adminResetPin, signOut, signInTeachers, directory, assignRole, assignCourseRole, courseAssignments],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

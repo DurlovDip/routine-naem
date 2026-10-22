@@ -1,6 +1,8 @@
 import { useEffect, useState, type KeyboardEvent } from "react";
 import { useAuth } from "../auth";
+import { useCourses } from "../courses";
 import { useDesignations } from "../designations";
+import { courseOptionLabel, type CourseAssignment } from "../lib/courses";
 import { designationChoices } from "../lib/designations";
 import type { DirectoryRow } from "../lib/mockAuth";
 import { roleLabel, type StoredRole } from "../lib/roles";
@@ -25,8 +27,10 @@ function rowsFromSchedule(teachers: Teacher[]): DirectoryRow[] {
 
 export function PeopleSection() {
   const auth = useAuth();
+  const courses = useCourses();
   const { state, dispatch } = useSchedule();
   const [rows, setRows] = useState<DirectoryRow[]>([]);
+  const [assignments, setAssignments] = useState<CourseAssignment[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -34,9 +38,17 @@ export function PeopleSection() {
   async function load() {
     try {
       const result = await auth.directory();
+      let assigned: CourseAssignment[] = [];
+      let assignmentError: string | null = null;
+      try {
+        assigned = await auth.courseAssignments();
+      } catch (err) {
+        assignmentError = err instanceof Error ? err.message : String(err);
+      }
       setRows(result.rows);
+      setAssignments(assigned);
       setNotice(result.notice);
-      setError(null);
+      setError(assignmentError);
     } catch (err) {
       setRows([]);
       setNotice(null);
@@ -76,7 +88,7 @@ export function PeopleSection() {
   return (
     <div className="access-panel" id="people-panel">
       <p className="hint">
-        Assign coordinator or temporary coordinator for a date range. Outside that range the person acts as a teacher. A super admin has no dates. Name and designation save when you leave the field. Reset PIN sets a new 4-digit PIN for that teacher.
+        Assign a coordinator to one course for a date range. Outside that range the person acts as a teacher for that course. A person can be assigned to more than one course. Name and designation save when you leave the field. Reset PIN sets a new 4-digit PIN for that teacher.
       </p>
       {notice ? (
         <p className="auth-error" id="roles-notice">
@@ -94,14 +106,17 @@ export function PeopleSection() {
             row={row}
             busy={busyId === row.teacherId}
             onSaveProfile={saveProfile}
-            onSave={async (role, start, end) => {
+            courses={courses.courses}
+            assignments={assignments.filter((item) => item.teacherId === row.teacherId)}
+            onSave={async (role, start, end, courseId) => {
               setBusyId(row.teacherId);
-              const message = await auth.assignRole(row.teacherId, role, start, end);
+              const message = await auth.assignCourseRole(row.teacherId, role, start, end, courseId);
               setBusyId(null);
               if (message) setError(message);
               else {
                 setError(null);
                 await load();
+                await courses.reload();
               }
             }}
             onResetPin={async (nextPin) => {
@@ -207,20 +222,26 @@ function PinReset({
 function RoleRow({
   row,
   busy,
+  courses,
+  assignments,
   onSave,
   onSaveProfile,
   onResetPin,
 }: {
   row: DirectoryRow;
   busy: boolean;
-  onSave: (role: Assignable, start: string | null, end: string | null) => Promise<void>;
+  courses: Array<{ id: string; name: string; code: string | null; status: "active" | "inactive" | "ended" }>;
+  assignments: CourseAssignment[];
+  onSave: (role: Assignable, start: string | null, end: string | null, courseId: string | null) => Promise<void>;
   onSaveProfile: (teacherId: string, patch: { name?: string; designation?: string }) => Promise<string | null>;
   onResetPin: (pin: string) => Promise<string | null>;
 }) {
-  const initial = row.storedRole === "super_admin" ? "teacher" : row.storedRole;
+  const initialAssignment = assignments[0];
+  const initial = initialAssignment?.role ?? (row.storedRole === "super_admin" ? "teacher" : row.storedRole);
   const [role, setRole] = useState<Assignable>(initial);
-  const [start, setStart] = useState(row.roleStart ?? "");
-  const [end, setEnd] = useState(row.roleEnd ?? "");
+  const [courseId, setCourseId] = useState(initialAssignment?.courseId ?? courses[0]?.id ?? "");
+  const [start, setStart] = useState(initialAssignment?.roleStart ?? row.roleStart ?? "");
+  const [end, setEnd] = useState(initialAssignment?.roleEnd ?? row.roleEnd ?? "");
   const [name, setName] = useState(row.teacherName);
   const [designation, setDesignation] = useState(row.designation ?? "");
   const dated = role === "coordinator" || role === "temp_coordinator";
@@ -301,6 +322,31 @@ function RoleRow({
         </label>
         <DesignationField teacherName={row.teacherName} value={designation} onChange={(next) => void commitDesignation(next)} />
         <label>
+          <span className="field-label">Course</span>
+          <select
+            className="field"
+            aria-label={`Course for ${row.teacherName}`}
+            value={courseId}
+            onChange={(event) => {
+              const nextId = event.target.value;
+              setCourseId(nextId);
+              const existing = assignments.find((item) => item.courseId === nextId);
+              if (existing) {
+                setRole(existing.role);
+                setStart(existing.roleStart);
+                setEnd(existing.roleEnd);
+              }
+            }}
+          >
+            <option value="">Choose a course</option>
+            {courses.map((course) => (
+              <option key={course.id} value={course.id}>
+                {courseOptionLabel(course)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
           <span className="field-label">Role</span>
           <select
             className="field"
@@ -341,8 +387,8 @@ function RoleRow({
         ) : null}
         <Button
           tone="primary"
-          disabled={busy || (dated && (!start || !end))}
-          onClick={() => void onSave(role, dated ? start : null, dated ? end : null)}
+          disabled={busy || (dated && (!start || !end || !courseId))}
+          onClick={() => void onSave(role, dated ? start : null, dated ? end : null, courseId || null)}
         >
           Save role
         </Button>

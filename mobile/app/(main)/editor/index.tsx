@@ -3,6 +3,8 @@ import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, View } from "react-native";
 import { useAccess } from "../../../src/auth";
+import { useCourses } from "../../../src/courses";
+import { CourseSwitcher } from "../../../src/CourseSwitcher";
 import { buildTimeline, cellHasConflict, findConflicts, maxSpanFrom, rowCells, type SheetSession } from "../../../src/lib/schedule";
 import { cleanBatchNumber, formatModuleCode, orderedManagers, parseModuleCode, rosterRange, sessionSpanLabel } from "../../../src/lib/text";
 import { addDays, formatDayNumber, formatRange, formatSlashDate, isIsoDate, weekdayName } from "../../../src/lib/time";
@@ -13,6 +15,7 @@ import { Button, CheckRow, Field, Label, Select, T } from "../../../src/ui";
 
 export default function EditorScreen() {
   const access = useAccess();
+  const courses = useCourses();
   const router = useRouter();
   const { state, dispatch, day } = useSchedule();
   const [batchId, setBatchId] = useState(state.batches[0]?.id ?? "");
@@ -27,6 +30,7 @@ export default function EditorScreen() {
   }, [state.batches, batchId]);
 
   if (!access.canEdit) return <Redirect href="/(main)/routine" />;
+  if (courses.ready && !courses.selected?.canEdit) return <Redirect href="/(main)/routine" />;
 
   const nextDate = addDays(day.date, 1);
   const nextDayNum = day.dayNumber + 1;
@@ -50,7 +54,11 @@ export default function EditorScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.desk }} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ flex: 1, backgroundColor: colors.desk }} contentContainerStyle={{ paddingBottom: 32, gap: 12 }} keyboardShouldPersistTaps="handled">
+      <View style={{ paddingTop: 12 }}>
+        <CourseSwitcher />
+      </View>
+      <View style={{ paddingHorizontal: 16, gap: 12 }}>
       <Pressable
         testID="open-header-footer"
         accessibilityRole="button"
@@ -281,6 +289,7 @@ export default function EditorScreen() {
           })}
         </View>
       )}
+      </View>
     </ScrollView>
   );
 }

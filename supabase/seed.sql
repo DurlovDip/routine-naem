@@ -4,9 +4,10 @@
 -- those rows are missing. Re-running does not rename teachers, blank batch
 -- names, or replace an existing schedule.
 --
--- Do not run this on the live project. It is not the PIN migration.
--- For a new project, run supabase/whole.sql. To hide PINs on the live
--- project, run supabase/lock_teacher_pin.sql.
+-- Do not run this on the live project. It is not the courses migration.
+-- For a new project, run supabase/whole.sql. On the live project, run
+-- supabase/migration_courses.sql once. lock_teacher_pin.sql is the PIN-only
+-- script.
 -- ========================================================================
 
 -- 1. Ensure Relational Tables Exist
@@ -108,13 +109,21 @@ on conflict (id) do nothing;
 
 
 -- 5. Seed Batches Table (id: number, name: default blank, number_of_students: 40)
-insert into public.batches (id, name, number_of_students) values
-  (9, '', 40),
-  (10, '', 40),
-  (11, '', 40),
-  (12, '', 40),
-  (13, '', 40)
-on conflict (id) do nothing;
+-- WHERE NOT EXISTS, not ON CONFLICT (id): courses change the primary key to
+-- (course_id, id). Rows that already exist are left alone.
+insert into public.batches (id, name, number_of_students)
+select batch.id, batch.name, batch.number_of_students
+from (
+  values
+    (9, '', 40),
+    (10, '', 40),
+    (11, '', 40),
+    (12, '', 40),
+    (13, '', 40)
+) as batch(id, name, number_of_students)
+where not exists (
+  select 1 from public.batches existing where existing.id = batch.id
+);
 
 -- Initial schedule document. Kept only when no default row exists yet.
 insert into public.schedules (id, data, updated_at)

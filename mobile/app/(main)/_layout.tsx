@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAccess, useAuth } from "../../src/auth";
+import { useCourses } from "../../src/courses";
 import { ChangePinModal } from "../../src/ChangePin";
 import { roleLabel } from "../../src/lib/roles";
 import { useSchedule } from "../../src/store";
@@ -13,6 +14,8 @@ import { T } from "../../src/ui";
 export default function MainLayout() {
   const auth = useAuth();
   const access = useAccess();
+  const courses = useCourses();
+  const courseEditable = courses.ready && Boolean(courses.selected?.canEdit);
   const insets = useSafeAreaInsets();
   const { syncStatus, syncError, refreshFromCloud } = useSchedule();
   const [pinOpen, setPinOpen] = useState(false);
@@ -68,7 +71,7 @@ export default function MainLayout() {
           name="editor"
           options={{
             title: "Editor",
-            href: access.canEdit ? undefined : null,
+            href: access.canEdit && courseEditable ? undefined : null,
             tabBarIcon: ({ color, size }) => <Ionicons name="create-outline" color={typeof color === "string" ? color : colors.muted} size={size} />,
           }}
         />

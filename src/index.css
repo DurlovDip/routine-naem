@@ -63,6 +63,15 @@ button { cursor: pointer; }
 
 .brand-sub { font-size: 0.72rem; color: var(--muted); margin-top: 0.05rem; }
 
+.course-switcher {
+  display: flex;
+  flex-direction: column;
+  min-width: 12rem;
+  max-width: 22rem;
+  flex: 1 1 16rem;
+}
+.course-switcher .field { min-height: 36px; }
+
 .toolbar-collapse {
   display: flex;
   flex-wrap: wrap;

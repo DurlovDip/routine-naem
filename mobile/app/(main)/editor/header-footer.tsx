@@ -2,6 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { Redirect, useRouter } from "expo-router";
 import { Pressable, ScrollView, View } from "react-native";
 import { useAccess } from "../../../src/auth";
+import { useCourses } from "../../../src/courses";
 import { FooterEditor } from "../../../src/FooterEditor";
 import { HeaderEditor } from "../../../src/HeaderEditor";
 import { colors } from "../../../src/theme";
@@ -9,8 +10,10 @@ import { T } from "../../../src/ui";
 
 export default function HeaderFooterScreen() {
   const access = useAccess();
+  const courses = useCourses();
   const router = useRouter();
   if (!access.canEdit) return <Redirect href="/(main)/routine" />;
+  if (courses.ready && !courses.selected?.canEdit) return <Redirect href="/(main)/routine" />;
 
   return (
     <ScrollView
