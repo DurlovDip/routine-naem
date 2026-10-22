@@ -4,6 +4,7 @@ import { useAuth } from "./auth";
 import { screenshotMode } from "./flags";
 import { createScreenshotState } from "./fixture";
 import { createInitialState } from "./lib/demo";
+import { footerSigneePatch, signeeFromTeacher } from "./lib/footerDefaults";
 import { scheduleReducer, type Action } from "./lib/reducer";
 import { canEditSchedule } from "./lib/roles";
 import { activeDay } from "./lib/schedule";
@@ -44,6 +45,9 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const skipCloudSave = useRef(false);
   const cloudReady = useRef(screenshotMode);
+  const signeeApplied = useRef(false);
+  const [scheduleReady, setScheduleReady] = useState(screenshotMode);
+  const [scheduleEpoch, setScheduleEpoch] = useState(0);
   const dirtyDuringLoad = useRef(false);
   const remoteApplied = useRef(false);
   const stateRef = useRef(state);
@@ -88,6 +92,21 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   }, [state, hydrated]);
 
   useEffect(() => {
+    signeeApplied.current = false;
+    if (!screenshotMode) setScheduleReady(false);
+  }, [auth.session?.userId]);
+
+  useEffect(() => {
+    if (!hydrated || !scheduleReady || !canWrite || !auth.session || signeeApplied.current) return;
+    signeeApplied.current = true;
+    const patch = footerSigneePatch(
+      stateRef.current.footer,
+      signeeFromTeacher(auth.session, stateRef.current.teachers),
+    );
+    if (patch) dispatch({ type: "set-footer", patch });
+  }, [hydrated, scheduleReady, scheduleEpoch, canWrite, auth.session, state.footer.name, state.footer.designation, state.teachers]);
+
+  useEffect(() => {
     const id = auth.session?.userId ?? null;
     if (prevUser.current && !id && !screenshotMode) {
       skipCloudSave.current = true;
@@ -103,6 +122,8 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   const applyRemote = useCallback((next: AppState) => {
     remoteApplied.current = true;
     skipCloudSave.current = true;
+    signeeApplied.current = false;
+    setScheduleEpoch((value) => value + 1);
     dispatch({ type: "replace", state: next });
   }, []);
 
@@ -152,9 +173,11 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       if (remote.error && !remote.state) {
         setSyncError(remote.error);
         setSyncStatus("error");
+        if (mounted) setScheduleReady(true);
         return;
       }
       cloudReady.current = true;
+      if (mounted) setScheduleReady(true);
       if (dirtyDuringLoad.current) {
         if (mounted) await publish();
         return;

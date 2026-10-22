@@ -112,7 +112,7 @@ function screenshotSession(): SessionView {
     username: role,
     email: syntheticEmail(role),
     teacherId: "screenshot",
-    teacherName: role === "teacher" ? "Teacher" : role === "temp_coordinator" ? "Temporary coordinator" : "Course Coordinator",
+    teacherName: role === "teacher" ? "Teacher" : role === "temp_coordinator" ? "Temporary coordinator" : "Dr. Litan Kanti Halder",
     role,
     storedRole: role,
     roleStart: dated ? "2026-01-01" : null,

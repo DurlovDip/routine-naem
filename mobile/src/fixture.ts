@@ -73,7 +73,7 @@ export function createScreenshotState(): AppState {
     days: [day, next],
     footer: {
       ...base.footer,
-      name: "Course Office",
+      name: "",
       signatureDate: "18.10.26",
       designation: "Assistant Director",
       isCourseCoordinator: true,

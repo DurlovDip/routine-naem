@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { createInitialState } from "../mobile/src/lib/demo.ts";
+import { footerSigneePatch, signeeFromTeacher } from "../mobile/src/lib/footerDefaults.ts";
 import { scheduleReducer } from "../mobile/src/lib/reducer.ts";
 import { SIGNATURE_MAX_WIDTH, signaturePixelSize } from "../mobile/src/lib/signature.ts";
 
@@ -63,14 +64,52 @@ describe("signature footer", () => {
     assert.equal(state.footer.signature, null);
   });
 
+  it("prefills an empty signee name and does not replace a saved one", () => {
+    const blank = createInitialState();
+    assert.equal(blank.footer.name, "");
+    const filled = footerSigneePatch(blank.footer, {
+      name: "Dr. Litan Kanti Halder",
+      designation: "Deputy Director",
+    });
+    assert.deepEqual(filled, {
+      name: "Dr. Litan Kanti Halder",
+      designation: "Deputy Director",
+    });
+
+    const named = scheduleReducer(blank, { type: "set-footer", patch: { name: "Course Office" } });
+    assert.equal(
+      footerSigneePatch(named.footer, { name: "Dr. Litan Kanti Halder", designation: "Deputy Director" }),
+      null,
+    );
+
+    const noDesignation = footerSigneePatch(blank.footer, { name: "Dr. Litan Kanti Halder", designation: "" });
+    assert.deepEqual(noDesignation, { name: "Dr. Litan Kanti Halder" });
+
+    const chosen = scheduleReducer(blank, {
+      type: "set-footer",
+      patch: { name: "", designation: "Director" },
+    });
+    assert.deepEqual(
+      footerSigneePatch(chosen.footer, { name: "Dr. Litan Kanti Halder", designation: "Deputy Director" }),
+      { name: "Dr. Litan Kanti Halder" },
+    );
+
+    const signee = signeeFromTeacher(
+      { teacherId: "teacher-17", teacherName: "Dr. Litan Kanti Halder" },
+      [{ id: "teacher-17", name: "Dr. Litan Kanti Halder", designation: "Assistant Director" }],
+    );
+    assert.deepEqual(signee, { name: "Dr. Litan Kanti Halder", designation: "Assistant Director" });
+  });
+
   it("keeps the signature editor behind the editor gate and prints it on the routine and PDF", () => {
-    const editor = readFileSync(new URL("../mobile/app/(main)/editor.tsx", import.meta.url), "utf8");
+    const editor = readFileSync(new URL("../mobile/app/(main)/editor/index.tsx", import.meta.url), "utf8");
     const redirectAt = editor.indexOf('if (!access.canEdit) return <Redirect href="/(main)/routine" />');
-    const headerAt = editor.indexOf("<HeaderEditor />");
-    const footerAt = editor.indexOf("<FooterEditor />");
+    const openAt = editor.indexOf("open-header-footer");
     assert.ok(redirectAt > -1);
-    assert.ok(headerAt > redirectAt);
-    assert.ok(footerAt > headerAt);
+    assert.ok(openAt > redirectAt);
+    assert.doesNotMatch(editor, /<FooterEditor/);
+    const screen = readFileSync(new URL("../mobile/app/(main)/editor/header-footer.tsx", import.meta.url), "utf8");
+    assert.ok(screen.indexOf("<FooterEditor />") > screen.indexOf("<HeaderEditor />"));
 
     const card = readFileSync(new URL("../mobile/src/FooterEditor.tsx", import.meta.url), "utf8");
     assert.match(card, /Signature & footer/);
@@ -108,8 +147,8 @@ describe("signature footer", () => {
     assert.match(pdf, /state\.footer\.lines/);
 
     const manifest = readFileSync(new URL("../mobile/app.json", import.meta.url), "utf8");
-    assert.match(manifest, /"version": "1.0.5"/);
-    assert.match(manifest, /"versionCode": 6/);
+    assert.match(manifest, /"version": "1.0.6"/);
+    assert.match(manifest, /"versionCode": 7/);
     assert.match(manifest, /READ_MEDIA_IMAGES/);
     assert.match(manifest, /expo-image-picker/);
     assert.doesNotMatch(manifest, /service_role/);
