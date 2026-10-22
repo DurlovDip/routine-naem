@@ -5,6 +5,7 @@ import { screenshotMode } from "./flags";
 import { createScreenshotState } from "./fixture";
 import { createInitialState } from "./lib/demo";
 import { scheduleReducer, type Action } from "./lib/reducer";
+import { canEditSchedule } from "./lib/roles";
 import { activeDay } from "./lib/schedule";
 import { normalizeState } from "./lib/storage";
 import { BUILTIN_DESIGNATIONS } from "./lib/designations";
@@ -51,8 +52,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
 
   const role = auth.session?.role;
   const realSession = Boolean(auth.session);
-  const canWrite =
-    realSession && (role === "super_admin" || role === "coordinator" || role === "temp_coordinator");
+  const canWrite = realSession && canEditSchedule(role ?? null);
   const canWriteCatalog = realSession && role === "super_admin";
   const day = activeDay(state);
 

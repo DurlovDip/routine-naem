@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { screenshotMode } from "./flags";
 import { supabase } from "./lib/supabase";
-import { pinError, syntheticEmail, type AppRole, type StoredRole } from "./lib/roles";
+import { canEditSchedule, pinError, syntheticEmail, type AppRole, type StoredRole } from "./lib/roles";
 
 const PIN_MIGRATION = "supabase/migration_add_teacher_pin.sql";
 
@@ -98,9 +99,30 @@ async function readSupabaseSession(): Promise<SessionView | null> {
   };
 }
 
+function screenshotSession(): SessionView {
+  const search = (globalThis as { location?: { search?: string } }).location?.search ?? "";
+  const role: AppRole = search.includes("role=teacher")
+    ? "teacher"
+    : search.includes("role=temp")
+      ? "temp_coordinator"
+      : "coordinator";
+  const dated = role === "coordinator" || role === "temp_coordinator";
+  return {
+    userId: "screenshot",
+    username: role,
+    email: syntheticEmail(role),
+    teacherId: "screenshot",
+    teacherName: role === "teacher" ? "Teacher" : role === "temp_coordinator" ? "Temporary coordinator" : "Course Coordinator",
+    role,
+    storedRole: role,
+    roleStart: dated ? "2026-01-01" : null,
+    roleEnd: dated ? "2026-12-31" : null,
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<SessionView | null>(null);
-  const [ready, setReady] = useState(false);
+  const [session, setSession] = useState<SessionView | null>(() => (screenshotMode ? screenshotSession() : null));
+  const [ready, setReady] = useState(screenshotMode);
   const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -116,6 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (screenshotMode) return;
     const { data } = supabase.auth.onAuthStateChange(() => {
       void refresh();
     });
@@ -160,7 +183,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    if (!screenshotMode) await supabase.auth.signOut();
     setSession(null);
     setNotice(null);
   }, []);
@@ -244,7 +267,7 @@ export function useAccess() {
   const role = session?.role ?? null;
   return {
     role,
-    canEdit: role === "super_admin" || role === "coordinator" || role === "temp_coordinator",
+    canEdit: canEditSchedule(role),
     canAdmin: role === "super_admin",
     cloudSession: Boolean(session),
   };

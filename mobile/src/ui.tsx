@@ -151,15 +151,18 @@ export function Select({
   options,
   onChange,
   placeholder = "—",
+  allowEmpty = true,
 }: {
   label: string;
   value: string;
   options: string[];
   onChange: (value: string) => void;
   placeholder?: string;
+  allowEmpty?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const rows = ["", ...options.filter((option, index) => options.indexOf(option) === index)];
+  const unique = options.filter((option, index) => options.indexOf(option) === index);
+  const rows = allowEmpty ? ["", ...unique] : unique;
   return (
     <>
       <Pressable accessibilityLabel={label} accessibilityRole="button" onPress={() => setOpen(true)} style={styles.select}>

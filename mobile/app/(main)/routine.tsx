@@ -19,7 +19,6 @@ export default function RoutineScreen() {
   const { state, dispatch, day, hydrated } = useSchedule();
   const [mode, setMode] = useState<ViewMode>("list");
   const timeline = buildTimeline(day);
-  const title = state.header.find((line) => line.style === "title")?.text;
   const rows = state.batches.map((batch) => ({
     batch,
     managers: orderedManagers(batch.roster, day.managers[batch.id] ?? []),
@@ -53,7 +52,23 @@ export default function RoutineScreen() {
           ) : null}
         </ScrollView>
         <View style={{ paddingHorizontal: 16, gap: 8 }}>
-          {title ? <T weight="semibold" style={{ fontSize: 13 }}>{title}</T> : null}
+          <View testID="routine-header" style={{ gap: 1 }}>
+            {state.header.map((line) =>
+              line.text.trim() ? (
+                <T
+                  key={line.id}
+                  weight={line.style === "normal" ? "regular" : "bold"}
+                  style={{
+                    textAlign: "center",
+                    fontSize: line.style === "title" ? 16 : line.style === "subtitle" ? 14 : 12,
+                    lineHeight: line.style === "title" ? 21 : 17,
+                  }}
+                >
+                  {line.text}
+                </T>
+              ) : null,
+            )}
+          </View>
           <T style={{ color: colors.muted, fontSize: 12 }}>
             {formatSlashDate(day.date)}
             {weekdayName(day.date) ? ` · ${weekdayName(day.date)}` : ""} · {formatDayNumber(day.dayNumber)}
