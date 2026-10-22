@@ -144,7 +144,7 @@ The client asks `my_courses()`, then loads `schedules` by `schedule_id` (not by 
 
 Default course: the saved choice if it is still visible, else the only visible course, else the active course with the latest `updated_at`.
 
-- **Web, super admin.** A Courses section: create, rename, code, dates, and Active / Inactive / Ended, with a status filter. A course switcher sits on the toolbar in the editor and the preview. The role row gains a course field and calls `assign_course_role`.
+- **Web, super admin.** A Courses view on the toolbar, separate from the day editor: create, rename, code, dates, and Active / Inactive / Ended, with a status filter. A course switcher sits on the toolbar in the editor, the preview, and that view. The role row gains a course field and calls `assign_course_role`.
 - **Web, coordinator.** The switcher lists assigned courses. The editor saves only when `can_edit` is true.
 - **Web, teacher.** The switcher lists active and ended courses. The page stays view-only.
 - **Mobile.** The same switcher is on the Routine tab and the Editor tab. The Routine banner stays the course title plus `Course Coordinator: name`. The Editor tab is hidden unless the selected course has `can_edit`. Course create / status is web-only; the Manage tab tells a super admin that courses are managed on the website.

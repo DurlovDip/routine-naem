@@ -17,10 +17,19 @@ import { joinWithAnd, rotateIds } from "./lib/text";
 import { addDays, formatDayNumber, formatSlashDate, weekdayName } from "./lib/time";
 import { ScheduleProvider, useSchedule } from "./state";
 
-type Mode = "edit" | "preview";
+type Mode = "edit" | "preview" | "courses";
 
 function readHash(): Mode {
-  return window.location.hash.replace(/^#/, "").startsWith("preview") ? "preview" : "edit";
+  const hash = window.location.hash.replace(/^#/, "");
+  if (hash.startsWith("courses")) return "courses";
+  if (hash.startsWith("preview")) return "preview";
+  return "edit";
+}
+
+function modeLabel(item: Mode): string {
+  if (item === "edit") return "Editor";
+  if (item === "preview") return "Preview";
+  return "Courses";
 }
 
 function Shell() {
@@ -46,9 +55,12 @@ function Shell() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPin, setShowPin] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
-  const view: Mode = canEdit ? mode : "preview";
-  const showEditor = view !== "preview";
-  const showPreview = view !== "edit";
+  const isSuperAdmin = auth.session?.role === "super_admin";
+  const showCourses = mode === "courses" && isSuperAdmin;
+  const view: Mode = showCourses ? "courses" : canEdit ? (mode === "courses" ? "edit" : mode) : "preview";
+  const showEditor = view === "edit";
+  const showPreview = view === "preview";
+  const viewModes: Mode[] = isSuperAdmin ? ["edit", "preview", "courses"] : ["edit", "preview"];
 
   const nextIds = state.batches.map((batch) =>
     joinWithAnd(rotateIds(batch.roster, day.managers[batch.id] ?? [])),
@@ -78,7 +90,7 @@ function Shell() {
         <div className={menuOpen ? "toolbar-collapse open" : "toolbar-collapse"}>
           {canEdit ? (
             <div className="segmented" role="group" aria-label="View">
-              {(["edit", "preview"] as const).map((item) => (
+              {viewModes.map((item) => (
                 <button
                   key={item}
                   type="button"
@@ -88,7 +100,7 @@ function Shell() {
                     setMenuOpen(false);
                   }}
                 >
-                  {item === "edit" ? "Editor" : "Preview"}
+                  {modeLabel(item)}
                 </button>
               ))}
             </div>
@@ -150,7 +162,18 @@ function Shell() {
         className="workspace"
         data-editor={showEditor ? "true" : "false"}
         data-preview={showPreview ? "true" : "false"}
+        data-courses={showCourses ? "true" : "false"}
       >
+        {showCourses ? (
+          <main className="courses-pane no-print">
+            <div className="courses-pane-inner">
+              <header className="courses-pane-head">
+                <h1>Courses</h1>
+              </header>
+              <CoursesPanel />
+            </div>
+          </main>
+        ) : null}
         {showEditor ? (
           <aside className="editor-pane no-print">
             <div className="daybar">
@@ -273,11 +296,6 @@ function Shell() {
             <div className="px-4 py-4">
               <GridEditor day={day} />
             </div>
-            {auth.session?.role === "super_admin" ? (
-              <Section className="courses-section" title="Courses" summary="Create and set status" defaultOpen>
-                <CoursesPanel />
-              </Section>
-            ) : null}
             {auth.session?.role === "super_admin" ? (
               <Section title="Roles" summary="Assign a course and dates">
                 <PeopleSection />
