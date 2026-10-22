@@ -26,3 +26,16 @@ export function courseTitleText(header: Array<{ style: string; text: string }>):
   if (title) return title.text.trim();
   return header.find((line) => line.text.trim())?.text.trim() ?? "";
 }
+
+/** Routine tab title: the first Course title line, then the footer course name. */
+export function routineCourseLabel(header: Array<{ style: string; text: string }>, courseName = ""): string {
+  const title = header.find((line) => line.style === "title" && line.text.trim());
+  if (title) return title.text.trim();
+  return courseName.trim();
+}
+
+/** "Course Coordinator: …" from the saved signee, then an assigned coordinator. */
+export function routineCoordinatorLabel(footerName: string, assignedName = ""): string {
+  const name = footerName.trim() || assignedName.trim();
+  return name ? `Course Coordinator: ${name}` : "";
+}

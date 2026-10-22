@@ -134,10 +134,9 @@ describe("signature footer", () => {
     assert.doesNotMatch(helper, /^import .*expo/m);
 
     const routine = readFileSync(new URL("../mobile/app/(main)/routine.tsx", import.meta.url), "utf8");
-    assert.match(routine, /testID="routine-footer"/);
-    assert.match(routine, /formatSignatureDate\(footer\.signatureDate\)/);
-    assert.match(routine, /footer\.lines/);
-    assert.doesNotMatch(routine, /canEdit \?[\s\S]{0,120}<SignatureBlock/);
+    assert.match(routine, /routineCoordinatorLabel/);
+    assert.doesNotMatch(routine, /testID="routine-footer"/);
+    assert.doesNotMatch(routine, /SignatureBlock/);
 
     const pdf = readFileSync(new URL("../mobile/src/pdf.ts", import.meta.url), "utf8");
     assert.match(pdf, /class="sign-img"/);
@@ -147,8 +146,8 @@ describe("signature footer", () => {
     assert.match(pdf, /state\.footer\.lines/);
 
     const manifest = readFileSync(new URL("../mobile/app.json", import.meta.url), "utf8");
-    assert.match(manifest, /"version": "1.0.7"/);
-    assert.match(manifest, /"versionCode": 8/);
+    assert.match(manifest, /"version": "1.0.8"/);
+    assert.match(manifest, /"versionCode": 9/);
     assert.match(manifest, /READ_MEDIA_IMAGES/);
     assert.match(manifest, /expo-image-picker/);
     assert.doesNotMatch(manifest, /service_role/);

@@ -1,13 +1,12 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Image, LayoutAnimation, Platform, Pressable, ScrollView, UIManager, View } from "react-native";
-import { useAccess } from "../../src/auth";
-import { courseTitleText } from "../../src/lib/header";
+import { ScrollView, View } from "react-native";
+import { useAccess, useAuth } from "../../src/auth";
+import { routineCoordinatorLabel, routineCourseLabel } from "../../src/lib/header";
 import { buildTimeline, rowCells, type SheetCell } from "../../src/lib/schedule";
 import { batchLines, cleanBatchNumber, formatModule, joinWithAnd, orderedManagers, sessionSpanLabel } from "../../src/lib/text";
-import { formatDayNumber, formatRange, formatSignatureDate, formatSlashDate, weekdayName } from "../../src/lib/time";
-import type { Footer, HeaderLine } from "../../src/lib/types";
+import { formatDayNumber, formatRange, formatSlashDate, weekdayName } from "../../src/lib/time";
 import { downloadRoutine } from "../../src/pdf";
 import { useSchedule } from "../../src/store";
 import { colors } from "../../src/theme";
@@ -15,19 +14,17 @@ import { Button, Segmented, T } from "../../src/ui";
 
 type ViewMode = "list" | "table";
 
-if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-function toggleOpen(setOpen: (value: boolean | ((open: boolean) => boolean)) => void) {
-  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-  setOpen((open) => !open);
-}
-
 export default function RoutineScreen() {
   const router = useRouter();
   const access = useAccess();
+  const auth = useAuth();
   const { state, dispatch, day, hydrated } = useSchedule();
+  const assignedCoordinator =
+    auth.session && (auth.session.role === "coordinator" || auth.session.role === "temp_coordinator")
+      ? auth.session.teacherName
+      : "";
+  const course = routineCourseLabel(state.header, state.footer.courseName ?? "");
+  const coordinator = routineCoordinatorLabel(state.footer.name, assignedCoordinator);
   const [mode, setMode] = useState<ViewMode>("list");
   const timeline = buildTimeline(day);
   const rows = state.batches.map((batch) => ({
@@ -62,8 +59,21 @@ export default function RoutineScreen() {
             />
           ) : null}
         </ScrollView>
-        <View style={{ paddingHorizontal: 16, gap: 8 }}>
-          <RoutineHeader header={state.header} />
+        <View style={{ paddingHorizontal: 16, gap: 6 }}>
+          {course || coordinator ? (
+            <View testID="routine-banner" style={{ gap: 1 }}>
+              {course ? (
+                <T weight="bold" numberOfLines={2} style={{ fontSize: 16, lineHeight: 20 }}>
+                  {course}
+                </T>
+              ) : null}
+              {coordinator ? (
+                <T numberOfLines={1} style={{ color: colors.muted, fontSize: 12, lineHeight: 16 }}>
+                  {coordinator}
+                </T>
+              ) : null}
+            </View>
+          ) : null}
           <T style={{ color: colors.muted, fontSize: 12 }}>
             {formatSlashDate(day.date)}
             {weekdayName(day.date) ? ` · ${weekdayName(day.date)}` : ""} · {formatDayNumber(day.dayNumber)}
@@ -94,109 +104,15 @@ export default function RoutineScreen() {
       ) : mode === "list" ? (
         <ScrollView testID="routine-list" contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 28 }}>
           {rows.length === 0 ? <Empty /> : rows.map((row) => <BatchCard key={row.batch.id} row={row} timeline={timeline} recap={state.recapLabel} />)}
-          <SignatureBlock footer={state.footer} />
         </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
           <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ padding: 16 }}>
             <Table rows={rows} timeline={timeline} recap={state.recapLabel} />
           </ScrollView>
-          <View style={{ paddingHorizontal: 16 }}>
-            <SignatureBlock footer={state.footer} />
-          </View>
         </ScrollView>
       )}
     </View>
-  );
-}
-
-function RoutineHeader({ header }: { header: HeaderLine[] }) {
-  const [open, setOpen] = useState(false);
-  const title = courseTitleText(header);
-  const lines = header.filter((line) => line.text.trim());
-  if (!title && lines.length === 0) return null;
-  return (
-    <Pressable
-      testID="routine-header"
-      accessibilityRole="button"
-      accessibilityState={{ expanded: open }}
-      accessibilityLabel={open ? "Collapse header" : "Expand header"}
-      onPress={() => toggleOpen(setOpen)}
-      style={disclosure}
-    >
-      <View style={{ flex: 1, gap: 4 }}>
-        {open ? (
-          lines.map((line) => (
-            <T
-              key={line.id}
-              weight={line.style === "normal" ? "regular" : "bold"}
-              style={{
-                textAlign: "center",
-                fontSize: line.style === "title" ? 16 : line.style === "subtitle" ? 14 : 12,
-                lineHeight: line.style === "title" ? 21 : 17,
-              }}
-            >
-              {line.text}
-            </T>
-          ))
-        ) : (
-          <T weight="bold" numberOfLines={2} style={{ fontSize: 15, lineHeight: 20 }}>
-            {title}
-          </T>
-        )}
-      </View>
-      <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color={colors.muted} />
-    </Pressable>
-  );
-}
-
-function SignatureBlock({ footer }: { footer: Footer }) {
-  const [open, setOpen] = useState(false);
-  const lines = footer.lines.filter((line) => line.trim());
-  const visible = Boolean(footer.signature || footer.signatureDate || footer.name.trim() || lines.length);
-  if (!visible) return null;
-  const name = footer.name.trim();
-  return (
-    <Pressable
-      testID="routine-footer"
-      accessibilityRole="button"
-      accessibilityState={{ expanded: open }}
-      accessibilityLabel={open ? "Collapse signature and footer" : "Expand signature and footer"}
-      onPress={() => toggleOpen(setOpen)}
-      style={disclosure}
-    >
-      <View style={{ flex: 1, gap: open ? 8 : 2 }}>
-        <T weight="bold" style={{ fontSize: 15 }}>Signature & footer</T>
-        {name ? (
-          <T numberOfLines={open ? undefined : 1} style={{ color: open ? colors.ink : colors.muted, fontSize: open ? 14 : 12 }}>
-            {name}
-          </T>
-        ) : null}
-        {open ? (
-          <View style={{ alignItems: "flex-end" }}>
-            <View style={{ width: 220, alignItems: "center" }}>
-              {footer.signature ? (
-                <Image
-                  source={{ uri: footer.signature }}
-                  accessibilityIgnoresInvertColors
-                  style={{ width: 176, height: 52, marginBottom: 4 }}
-                  resizeMode="contain"
-                />
-              ) : (
-                <View style={{ height: 28 }} />
-              )}
-              {footer.signatureDate ? (
-                <T weight="bold" style={{ fontSize: 13, textAlign: "center" }}>{formatSignatureDate(footer.signatureDate)}</T>
-              ) : null}
-              {lines.map((line, index) => (
-                <T key={index} style={{ fontSize: 12, textAlign: "center", lineHeight: 16 }}>{line}</T>
-              ))}
-            </View>
-          </View>
-        ) : null}
-      </View>
-      <Ionicons name={open ? "chevron-up" : "chevron-down"} size={18} color={colors.muted} />
-    </Pressable>
   );
 }
 
@@ -318,18 +234,6 @@ function TableCell({
     </View>
   );
 }
-
-const disclosure = {
-  backgroundColor: colors.surface,
-  borderWidth: 1,
-  borderColor: colors.line,
-  borderRadius: 12,
-  paddingHorizontal: 12,
-  paddingVertical: 10,
-  flexDirection: "row" as const,
-  alignItems: "center" as const,
-  gap: 8,
-};
 
 const card = {
   backgroundColor: colors.surface,
