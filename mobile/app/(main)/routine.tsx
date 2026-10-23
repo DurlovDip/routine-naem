@@ -3,7 +3,7 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useAccess, useAuth } from "../../src/auth";
-import { routineCoordinatorLabel, routineCourseLabel } from "../../src/lib/header";
+import { routineCoordinatorLabel } from "../../src/lib/header";
 import { buildTimeline, rowCells, type SheetCell } from "../../src/lib/schedule";
 import { batchLines, cleanBatchNumber, formatModule, joinWithAnd, orderedManagers, sessionSpanLabel } from "../../src/lib/text";
 import { formatDayNumber, formatRange, formatSlashDate, weekdayName } from "../../src/lib/time";
@@ -23,7 +23,6 @@ export default function RoutineScreen() {
     auth.session && (auth.session.role === "coordinator" || auth.session.role === "temp_coordinator")
       ? auth.session.teacherName
       : "";
-  const course = routineCourseLabel(state.header, state.footer.courseName ?? "");
   const coordinator = routineCoordinatorLabel(state.footer.name, assignedCoordinator);
   const [mode, setMode] = useState<ViewMode>("list");
   const timeline = buildTimeline(day);
@@ -60,18 +59,11 @@ export default function RoutineScreen() {
           ) : null}
         </ScrollView>
         <View style={{ paddingHorizontal: space.lg, gap: space.sm }}>
-          {course || coordinator ? (
-            <View testID="routine-banner" style={{ gap: 2 }}>
-              {course ? (
-                <T weight="bold" numberOfLines={2} style={{ fontSize: type.title, lineHeight: 22 }}>
-                  {course}
-                </T>
-              ) : null}
-              {coordinator ? (
-                <T numberOfLines={1} style={{ color: colors.muted, fontSize: type.caption, lineHeight: 16 }}>
-                  {coordinator}
-                </T>
-              ) : null}
+          {coordinator ? (
+            <View testID="routine-banner">
+              <T numberOfLines={1} style={{ color: colors.muted, fontSize: type.caption, lineHeight: 16 }}>
+                {coordinator}
+              </T>
             </View>
           ) : null}
           <T style={{ color: colors.muted, fontSize: type.caption }}>

@@ -30,46 +30,36 @@ export function AppHeader() {
   const courses = useCourses();
   const insets = useSafeAreaInsets();
   const aboveTabBar = TAB_BAR_HEIGHT + insets.bottom;
-  const { syncStatus, syncError, refreshFromCloud, state, dispatch, designations } = useSchedule();
+  const { state, dispatch, designations } = useSchedule();
   const [coursesOpen, setCoursesOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
   const session = auth.session;
   const selected = courses.selected;
-  const sync =
-    syncStatus === "saving" ? "Saving…" : syncStatus === "error" ? "Sync failed" : syncStatus === "local" ? "On this phone" : "Saved";
 
   return (
     <View style={bar}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: space.md }}>
-        <View style={courseButton}>
-          <T style={{ color: colors.muted, fontSize: type.caption }}>Daily Schedule</T>
-          <Pressable
-            testID="course-menu"
-            accessibilityRole="button"
-            accessibilityLabel={selected ? `Course ${selected.name}` : "Choose a course"}
-            onPress={() => setCoursesOpen(true)}
-            style={courseMenu}
-          >
-            <T weight="semibold" numberOfLines={1} style={{ fontSize: type.title, flexShrink: 1 }}>
-              {selected?.name ?? "No course"}
-            </T>
-            <Ionicons name="chevron-down" size={16} color={colors.muted} />
-          </Pressable>
-          <Pressable onPress={() => void refreshFromCloud()} hitSlop={6}>
-            <T style={{ color: syncStatus === "error" ? colors.danger : colors.muted, fontSize: type.caption }}>{sync}</T>
-          </Pressable>
-        </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: space.sm }}>
+        <Pressable
+          testID="course-menu"
+          accessibilityRole="button"
+          accessibilityLabel={selected ? `Course ${selected.name}` : "Choose a course"}
+          onPress={() => setCoursesOpen(true)}
+          style={courseMenu}
+        >
+          <T weight="bold" numberOfLines={1} style={{ fontSize: type.title, flexShrink: 1 }}>
+            {selected?.name ?? "No course"}
+          </T>
+          <Ionicons name="chevron-down" size={16} color={colors.ink} />
+        </Pressable>
         <Pressable
           testID="profile-button"
           accessibilityRole="button"
           accessibilityLabel="Profile"
           onPress={() => setProfileOpen(true)}
-          style={avatar}
+          style={profileButton}
         >
-          <T weight="semibold" style={{ color: colors.accentDark, fontSize: type.label }}>
-            {initials(session?.teacherName ?? "")}
-          </T>
+          <Ionicons name="person-circle" size={32} color={colors.ink} />
         </Pressable>
       </View>
       <Modal visible={coursesOpen} transparent animationType="fade" onRequestClose={() => setCoursesOpen(false)} statusBarTranslucent navigationBarTranslucent>
@@ -138,11 +128,6 @@ export function AppHeader() {
         </View>
       </Modal>
       <ChangePinModal open={pinOpen} onClose={() => setPinOpen(false)} />
-      {syncError ? (
-        <Pressable testID="sync-error" onPress={() => void refreshFromCloud()} style={errorBanner}>
-          <T style={{ color: colors.danger, fontSize: type.caption, lineHeight: 17 }}>{syncError}</T>
-        </Pressable>
-      ) : null}
     </View>
   );
 }
@@ -170,7 +155,7 @@ function ProfileBody({
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const version = Constants.expoConfig?.version ?? "1.1.4";
+  const version = Constants.expoConfig?.version ?? "1.1.5";
 
   useEffect(() => {
     let mounted = true;
@@ -266,23 +251,26 @@ function StatusChip({ status }: { status: CourseStatus }) {
 const bar = {
   backgroundColor: colors.surface,
   paddingHorizontal: space.lg,
-  paddingTop: space.sm,
-  paddingBottom: space.md,
-  gap: space.sm,
-};
-
-const courseButton = {
-  flex: 1,
-  gap: 1,
+  paddingVertical: space.sm,
+  minHeight: 52,
+  justifyContent: "center" as const,
 };
 
 const courseMenu = {
+  flex: 1,
   flexDirection: "row" as const,
   alignItems: "center" as const,
   gap: 4,
-  maxWidth: "100%" as const,
+  minHeight: 44,
   outlineWidth: 0,
   outlineStyle: "solid" as const,
+};
+
+const profileButton = {
+  width: 44,
+  height: 44,
+  alignItems: "center" as const,
+  justifyContent: "center" as const,
 };
 
 const avatar = {
@@ -340,10 +328,4 @@ const courseRow = {
   paddingVertical: space.md,
   paddingHorizontal: space.sm,
   borderRadius: radius.md,
-};
-
-const errorBanner = {
-  backgroundColor: colors.dangerBg,
-  borderRadius: radius.sm,
-  padding: space.sm,
 };

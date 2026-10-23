@@ -140,7 +140,7 @@ describe("routine header editing", () => {
     assert.match(headerEditor, /type: "add-header-line"/);
     const routine = readFileSync(new URL("../mobile/app/(main)/routine.tsx", import.meta.url), "utf8");
     assert.match(routine, /testID="routine-banner"/);
-    assert.match(routine, /routineCourseLabel\(state\.header/);
+    assert.doesNotMatch(routine, /routineCourseLabel\(/);
     assert.match(routine, /routineCoordinatorLabel\(state\.footer\.name/);
     assert.match(routine, /formatSlashDate\(day\.date\)/);
     assert.match(routine, /downloadRoutine\(state, day\)/);

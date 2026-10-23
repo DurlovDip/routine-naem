@@ -3,7 +3,7 @@
     "name": "Daily Schedule",
     "slug": "routine-naem",
     "scheme": "routine-naem",
-    "version": "1.1.4",
+    "version": "1.1.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "bd.naem.routine",
-      "versionCode": 14,
+      "versionCode": 15,
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.READ_EXTERNAL_STORAGE",
