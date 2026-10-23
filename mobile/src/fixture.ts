@@ -1,5 +1,6 @@
 import { createInitialState } from "./lib/demo";
 import { rosterRange } from "./lib/text";
+import { addDays, todayInDhaka } from "./lib/time";
 import type { AppState, DayPlan } from "./lib/types";
 
 function cloneDay(day: DayPlan): DayPlan {
@@ -10,8 +11,9 @@ function cloneDay(day: DayPlan): DayPlan {
 export function createScreenshotState(): AppState {
   const base = createInitialState();
   const day = base.days[0];
+  const today = todayInDhaka();
   day.id = "day-07";
-  day.date = "2026-10-18";
+  day.date = addDays(today, -1);
   day.dayNumber = 7;
   day.dayStart = "09:00";
   day.slots = [
@@ -28,18 +30,18 @@ export function createScreenshotState(): AppState {
     "batch-11": ["03", "04"],
   };
   day.cells = {
-    "batch-9:s1": { code: "M- 7.04", note: "", teachers: ["Prof. Asisul"] },
+    "batch-9:s1": { code: "M- 7.04", note: "", teachers: ["Dr. Litan Kanti Halder", "Prof. Asisul"] },
     "batch-9:s2": { code: "M- 8.01", note: "", teachers: ["Md. Sazzad Ali", "Muhammad Yeakub Ali"] },
     "batch-10:s1": { code: "M- 7.02", note: "", teachers: ["Mst. Arifa Tazrimin"] },
-    "batch-10:s4": { code: "M- 9.05", note: "", teachers: ["Muhammad Yeakub Ali"] },
+    "batch-10:s4": { code: "M- 9.05", note: "", teachers: ["Dr. Litan Kanti Halder", "Muhammad Yeakub Ali"] },
     "batch-11:s1": { code: "M- 8.04", note: "", teachers: ["Prof. Asisul"] },
-    "batch-11:s3": { code: "M- 7.04", note: "", teachers: ["Md. Sazzad Ali"] },
+    "batch-11:s3": { code: "M- 7.04", note: "", teachers: ["Dr. Litan Kanti Halder", "Md. Sazzad Ali"] },
   };
   day.merges = [{ batchId: "batch-9", sessionIds: ["s2", "s3"] }];
 
   const next = cloneDay(day);
   next.id = "day-08";
-  next.date = "2026-10-19";
+  next.date = today;
   next.dayNumber = 8;
   next.managers = {
     "batch-9": ["11", "12"],
@@ -47,9 +49,14 @@ export function createScreenshotState(): AppState {
     "batch-11": ["05", "06"],
   };
 
+  const later = cloneDay(next);
+  later.id = "day-09";
+  later.date = addDays(today, 1);
+  later.dayNumber = 9;
+
   return {
     ...base,
-    activeDayId: day.id,
+    activeDayId: next.id,
     recapLabel: "Recap & Day Manager",
     batches: [9, 10, 11].map((num) => ({
       id: `batch-${num}`,
@@ -58,6 +65,7 @@ export function createScreenshotState(): AppState {
       roster: rosterRange(1, 40),
     })),
     teachers: [
+      { id: "screenshot", name: "Dr. Litan Kanti Halder", designation: "Assistant Director" },
       { id: "teacher-1", name: "Prof. Asisul", designation: "Professor" },
       { id: "teacher-2", name: "Md. Sazzad Ali", designation: "Associate Professor" },
       { id: "teacher-3", name: "Muhammad Yeakub Ali", designation: "Assistant Professor" },
@@ -70,10 +78,10 @@ export function createScreenshotState(): AppState {
     ],
     moduleNumbers: ["M-7", "M-8", "M-9"],
     subNumbers: [".01", ".02", ".04", ".05"],
-    days: [day, next],
+    days: [day, next, later],
     footer: {
       ...base.footer,
-      name: "Course Office",
+      name: "",
       signatureDate: "18.10.26",
       designation: "Assistant Director",
       isCourseCoordinator: true,

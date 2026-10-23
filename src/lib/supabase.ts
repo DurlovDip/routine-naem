@@ -33,6 +33,11 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
 
 export const SCHEDULE_ROW_ID = "default";
 export const SCHEDULE_TABLE = "schedules";
+
+export type ScheduleTarget = {
+  scheduleId: string;
+  courseId: string | null;
+};
 export const TEACHERS_TABLE = "teachers";
 export const MODULES_TABLE = "modules";
 export const BATCHES_TABLE = "batches";
@@ -41,12 +46,18 @@ export const BATCHES_TABLE = "batches";
  * Fetch remote state from Supabase, integrating relational tables
  * (teachers, modules, batches) with the main schedule document.
  */
-export async function loadRemoteSchedule(): Promise<{ state: AppState | null; error: string | null }> {
+export async function loadRemoteSchedule(
+  target?: ScheduleTarget,
+): Promise<{ state: AppState | null; error: string | null }> {
   if (!supabase) return { state: null, error: null };
+  const scheduleId = target?.scheduleId ?? SCHEDULE_ROW_ID;
+  const courseId = target?.courseId ?? null;
   try {
-    const schedulePromise = supabase.from(SCHEDULE_TABLE).select("data").eq("id", SCHEDULE_ROW_ID).maybeSingle();
+    const schedulePromise = supabase.from(SCHEDULE_TABLE).select("data").eq("id", scheduleId).maybeSingle();
     const modulesPromise = supabase.from(MODULES_TABLE).select("id, module_number, module_subnumber, module_name").order("id");
-    const batchesPromise = supabase.from(BATCHES_TABLE).select("id, name, number_of_students").order("id");
+    let batchesQuery = supabase.from(BATCHES_TABLE).select("id, name, number_of_students").order("id");
+    if (courseId) batchesQuery = batchesQuery.eq("course_id", courseId);
+    const batchesPromise = batchesQuery;
 
     let teachersRes: {
       data: Array<{ id: string; name: string; designation?: string }> | null;
@@ -180,14 +191,18 @@ async function deleteMissingModules(modules: ModuleEntry[]) {
   }
 }
 
-async function deleteMissingBatches(batches: Batch[]) {
+async function deleteMissingBatches(batches: Batch[], courseId: string | null) {
   if (!supabase || batches.length === 0) return;
-  const { data: remoteRows, error } = await supabase.from(BATCHES_TABLE).select("id");
+  let query = supabase.from(BATCHES_TABLE).select("id");
+  if (courseId) query = query.eq("course_id", courseId);
+  const { data: remoteRows, error } = await query;
   if (error || !remoteRows) return;
   const activeNumIds = new Set(batches.map((b, idx) => parseInt(b.id.replace(/\D/g, ""), 10) || (idx + 1)));
   const toDelete = remoteRows.map((r: { id: number }) => r.id).filter((id) => !activeNumIds.has(id));
   if (toDelete.length > 0) {
-    await supabase.from(BATCHES_TABLE).delete().in("id", toDelete);
+    let remove = supabase.from(BATCHES_TABLE).delete().in("id", toDelete);
+    if (courseId) remove = remove.eq("course_id", courseId);
+    await remove;
   }
 }
 
@@ -233,7 +248,7 @@ async function syncModules(modules: ModuleEntry[], timestamp: string) {
   await deleteMissingModules(modules);
 }
 
-async function syncBatches(batches: Batch[], timestamp: string) {
+async function syncBatches(batches: Batch[], timestamp: string, courseId: string | null) {
   if (!supabase || batches.length === 0) return;
 
   const rows = batches.map((b, index) => {
@@ -243,10 +258,11 @@ async function syncBatches(batches: Batch[], timestamp: string) {
       name: b.name ?? "",
       number_of_students: b.numberOfStudents ?? 40,
       updated_at: timestamp,
+      ...(courseId ? { course_id: courseId } : {}),
     };
   });
-  await supabase.from(BATCHES_TABLE).upsert(rows, { onConflict: "id" });
-  await deleteMissingBatches(batches);
+  await supabase.from(BATCHES_TABLE).upsert(rows, { onConflict: courseId ? "course_id,id" : "id" });
+  await deleteMissingBatches(batches, courseId);
 }
 
 /**
@@ -256,12 +272,14 @@ async function syncBatches(batches: Batch[], timestamp: string) {
  */
 export async function upsertRemoteSchedule(
   state: AppState,
-  options: { catalogs?: boolean } = {},
+  options: { catalogs?: boolean; scheduleId?: string; courseId?: string | null } = {},
 ): Promise<boolean> {
   if (!supabase) return false;
   try {
     const now = new Date().toISOString();
     const catalogs = options.catalogs !== false;
+    const scheduleId = options.scheduleId ?? SCHEDULE_ROW_ID;
+    const courseId = options.courseId ?? null;
 
     if (state.days.length === 0) {
       console.error("Refusing to replace the live schedule with an empty one.");
@@ -270,9 +288,10 @@ export async function upsertRemoteSchedule(
 
     const schedulePromise = supabase.from(SCHEDULE_TABLE).upsert(
       {
-        id: SCHEDULE_ROW_ID,
+        id: scheduleId,
         data: state,
         updated_at: now,
+        ...(courseId ? { course_id: courseId } : {}),
       },
       { onConflict: "id" },
     );
@@ -286,7 +305,7 @@ export async function upsertRemoteSchedule(
         ? syncModules(state.modules, now).catch((err) => console.warn("Sync modules failed:", err))
         : Promise.resolve(),
       catalogs
-        ? syncBatches(state.batches, now).catch((err) => console.warn("Sync batches failed:", err))
+        ? syncBatches(state.batches, now, courseId).catch((err) => console.warn("Sync batches failed:", err))
         : Promise.resolve(),
     ]);
 
@@ -306,23 +325,25 @@ export async function upsertRemoteSchedule(
  */
 export function subscribeToRemoteSchedule(
   onUpdate: (state: AppState) => void,
+  target?: ScheduleTarget,
 ): (() => void) | null {
   if (!supabase) return null;
+  const scheduleId = target?.scheduleId ?? SCHEDULE_ROW_ID;
 
   try {
     const channel = supabase
-      .channel("routine-realtime-channel")
+      .channel(`routine-realtime-${scheduleId}`)
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
           table: SCHEDULE_TABLE,
-          filter: `id=eq.${SCHEDULE_ROW_ID}`,
+          filter: `id=eq.${scheduleId}`,
         },
         async () => {
-          const latest = await fetchRemoteSchedule();
-          if (latest) onUpdate(latest);
+          const latest = await loadRemoteSchedule(target);
+          if (latest.state) onUpdate(latest.state);
         },
       )
       .on(
@@ -333,8 +354,8 @@ export function subscribeToRemoteSchedule(
           table: TEACHERS_TABLE,
         },
         async () => {
-          const latest = await fetchRemoteSchedule();
-          if (latest) onUpdate(latest);
+          const latest = await loadRemoteSchedule(target);
+          if (latest.state) onUpdate(latest.state);
         },
       )
       .on(
@@ -345,8 +366,8 @@ export function subscribeToRemoteSchedule(
           table: MODULES_TABLE,
         },
         async () => {
-          const latest = await fetchRemoteSchedule();
-          if (latest) onUpdate(latest);
+          const latest = await loadRemoteSchedule(target);
+          if (latest.state) onUpdate(latest.state);
         },
       )
       .on(
@@ -357,8 +378,8 @@ export function subscribeToRemoteSchedule(
           table: BATCHES_TABLE,
         },
         async () => {
-          const latest = await fetchRemoteSchedule();
-          if (latest) onUpdate(latest);
+          const latest = await loadRemoteSchedule(target);
+          if (latest.state) onUpdate(latest.state);
         },
       )
       .subscribe();

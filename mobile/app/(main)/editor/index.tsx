@@ -1,18 +1,21 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
-import { Redirect } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import { Alert, ScrollView, View } from "react-native";
-import { useAccess } from "../../src/auth";
-import { buildTimeline, cellHasConflict, findConflicts, maxSpanFrom, rowCells, type SheetSession } from "../../src/lib/schedule";
-import { cleanBatchNumber, formatModuleCode, orderedManagers, parseModuleCode, rosterRange, sessionSpanLabel } from "../../src/lib/text";
-import { addDays, formatDayNumber, formatRange, formatSlashDate, isIsoDate, weekdayName } from "../../src/lib/time";
-import type { Batch, CellContent, DayPlan } from "../../src/lib/types";
-import { useSchedule } from "../../src/store";
-import { colors } from "../../src/theme";
-import { Button, CheckRow, Field, Label, Select, T } from "../../src/ui";
+import { Alert, Pressable, ScrollView, View } from "react-native";
+import { useAccess } from "../../../src/auth";
+import { useCourses } from "../../../src/courses";
+import { buildTimeline, cellHasConflict, findConflicts, maxSpanFrom, rowCells, type SheetSession } from "../../../src/lib/schedule";
+import { cleanBatchNumber, formatModuleCode, orderedManagers, parseModuleCode, rosterRange, sessionSpanLabel } from "../../../src/lib/text";
+import { addDays, dayWhen, formatDayNumber, formatRange, formatSlashDate, isIsoDate, todayInDhaka, weekdayName } from "../../../src/lib/time";
+import type { Batch, CellContent, DayPlan } from "../../../src/lib/types";
+import { useSchedule } from "../../../src/store";
+import { card, colors, radius, space } from "../../../src/theme";
+import { Button, CheckRow, DayChip, Field, Label, Select, T } from "../../../src/ui";
 
 export default function EditorScreen() {
   const access = useAccess();
+  const courses = useCourses();
+  const router = useRouter();
   const { state, dispatch, day } = useSchedule();
   const [batchId, setBatchId] = useState(state.batches[0]?.id ?? "");
   const [dateText, setDateText] = useState(day.date);
@@ -26,6 +29,7 @@ export default function EditorScreen() {
   }, [state.batches, batchId]);
 
   if (!access.canEdit) return <Redirect href="/(main)/routine" />;
+  if (courses.ready && !courses.selected?.canEdit) return <Redirect href="/(main)/routine" />;
 
   const nextDate = addDays(day.date, 1);
   const nextDayNum = day.dayNumber + 1;
@@ -49,20 +53,38 @@ export default function EditorScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.desk }} contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+    <ScrollView style={{ flex: 1, backgroundColor: colors.desk }} contentContainerStyle={{ paddingBottom: 32, gap: space.md }} keyboardShouldPersistTaps="handled">
+      <View style={{ paddingHorizontal: space.lg, paddingTop: space.lg, gap: space.md }}>
+      <Pressable
+        testID="open-header-footer"
+        accessibilityRole="button"
+        accessibilityLabel="Header and footer"
+        onPress={() => router.push("/(main)/editor/header-footer")}
+        style={{
+          ...card,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: space.sm,
+        }}
+      >
+        <View style={{ flex: 1, gap: 2 }}>
+          <T weight="bold" style={{ color: colors.accent, fontSize: 15 }}>Header & footer</T>
+          <T style={{ color: colors.muted, fontSize: 12, lineHeight: 17 }}>
+            Course title, signature, and designation
+          </T>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+      </Pressable>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, alignItems: "center" }}>
-        {state.days.map((item) => {
-          const on = item.id === day.id;
-          return (
-            <Button
-              key={item.id}
-              small
-              tone={on ? "primary" : "ghost"}
-              label={`${formatDayNumber(item.dayNumber).replace("Day – ", "Day ")}  ${formatSlashDate(item.date)}`}
-              onPress={() => dispatch({ type: "set-active-day", id: item.id })}
-            />
-          );
-        })}
+        {state.days.map((item) => (
+          <DayChip
+            key={item.id}
+            selected={item.id === day.id}
+            when={dayWhen(item.date, todayInDhaka())}
+            label={formatDayNumber(item.dayNumber).replace("Day – ", "Day ")}
+            onPress={() => dispatch({ type: "set-active-day", id: item.id })}
+          />
+        ))}
         <Button
           small
           tone={showDaySettings ? "primary" : "ghost"}
@@ -74,16 +96,7 @@ export default function EditorScreen() {
       </ScrollView>
 
       {showDaySettings ? (
-        <View
-          style={{
-            backgroundColor: colors.surface,
-            borderWidth: 1,
-            borderColor: colors.line,
-            borderRadius: 12,
-            padding: 12,
-            gap: 12,
-          }}
-        >
+        <View style={{ ...card, gap: space.md }}>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <View style={{ flex: 1 }}>
               <Label>Date</Label>
@@ -128,7 +141,7 @@ export default function EditorScreen() {
             />
           </View>
           {nextDayExists ? (
-            <View style={{ backgroundColor: colors.warnBg, borderColor: "#ead9b0", borderWidth: 1, borderRadius: 8, padding: 8, gap: 6 }}>
+            <View style={{ backgroundColor: colors.warnBg, borderRadius: radius.md, padding: space.sm, gap: space.sm }}>
               <T style={{ color: colors.warn, fontSize: 12 }}>
                 Day {String(nextDayNum).padStart(2, "0")} ({formatSlashDate(nextDate)}) already exists.
               </T>
@@ -253,6 +266,7 @@ export default function EditorScreen() {
           })}
         </View>
       )}
+      </View>
     </ScrollView>
   );
 }
@@ -411,10 +425,3 @@ function Managers({ day, batch, managers }: { day: DayPlan; batch: Batch; manage
   );
 }
 
-const card = {
-  backgroundColor: colors.surface,
-  borderWidth: 1,
-  borderColor: colors.line,
-  borderRadius: 12,
-  padding: 12,
-} as const;

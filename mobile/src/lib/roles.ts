@@ -55,3 +55,8 @@ export function roleLabel(role: AppRole): string {
   if (role === "temp_coordinator") return "Temporary coordinator";
   return "Teacher";
 }
+
+/** Matches the web editor and the schedules write RLS policy. */
+export function canEditSchedule(role: AppRole | null): boolean {
+  return role === "super_admin" || role === "coordinator" || role === "temp_coordinator";
+}

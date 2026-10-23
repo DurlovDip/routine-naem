@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { CourseAssignment } from "./lib/courses";
 import {
   mockAdminResetPin,
   mockAssignRole,
@@ -20,6 +21,7 @@ import {
   type DirectoryRow,
   type SessionView,
 } from "./lib/mockAuth";
+import { mockAssignCourse, mockCourseAssignments } from "./lib/mockCourses";
 import {
   effectiveRole,
   missingTeacherColumnNotice,
@@ -55,6 +57,14 @@ type AuthValue = {
     roleStart: string | null,
     roleEnd: string | null,
   ) => Promise<string | null>;
+  assignCourseRole: (
+    teacherId: string,
+    role: Exclude<StoredRole, "super_admin">,
+    roleStart: string | null,
+    roleEnd: string | null,
+    courseId: string | null,
+  ) => Promise<string | null>;
+  courseAssignments: () => Promise<CourseAssignment[]>;
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -358,6 +368,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [session?.role],
   );
 
+  const courseAssignments = useCallback(async () => {
+    if (isAuthMock) return mockCourseAssignments();
+    if (!supabase) return [];
+    const { data, error } = await supabase.rpc("list_course_assignments");
+    if (error) throw new Error(error.message);
+    const rows = Array.isArray(data) ? data : [];
+    return rows.map((row) => {
+      const record = row as {
+        teacher_id: string;
+        course_id: string;
+        role: string;
+        role_start: string;
+        role_end: string;
+      };
+      return {
+        teacherId: record.teacher_id,
+        courseId: record.course_id,
+        role: record.role === "temp_coordinator" ? "temp_coordinator" as const : "coordinator" as const,
+        roleStart: String(record.role_start).slice(0, 10),
+        roleEnd: String(record.role_end).slice(0, 10),
+      };
+    });
+  }, []);
+
+  const assignCourseRole = useCallback(
+    async (
+      teacherId: string,
+      role: Exclude<StoredRole, "super_admin">,
+      roleStart: string | null,
+      roleEnd: string | null,
+      courseId: string | null,
+    ) => {
+      try {
+        if (isAuthMock) {
+          mockAssignCourse(teacherId, role, roleStart, roleEnd, courseId);
+          const today = todayIso();
+          const mine = mockCourseAssignments().filter((row) => row.teacherId === teacherId);
+          const current = mine.find((row) => row.roleStart <= today && today <= row.roleEnd);
+          const future = mine.filter((row) => row.roleStart > today).sort((a, b) => a.roleStart.localeCompare(b.roleStart))[0];
+          const past = mine.filter((row) => row.roleEnd < today).sort((a, b) => b.roleEnd.localeCompare(a.roleEnd))[0];
+          const summary = current ?? future ?? past;
+          if (summary) mockAssignRole(teacherId, summary.role, summary.roleStart, summary.roleEnd);
+          else mockAssignRole(teacherId, "teacher", null, null);
+          setSession(mockSession());
+          return null;
+        }
+        if (!supabase) return "Supabase is not configured.";
+        const { error } = await supabase.rpc("assign_course_role", {
+          target_teacher: teacherId,
+          next_role: role,
+          start_on: roleStart,
+          end_on: roleEnd,
+          target_course: courseId,
+        });
+        if (!error) setSession(await readSupabaseSession());
+        return rpcError(error);
+      } catch (err) {
+        return err instanceof Error ? err.message : String(err);
+      }
+    },
+    [],
+  );
+
   const assignRole = useCallback(
     async (
       teacherId: string,
@@ -402,8 +475,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       directory,
       updateTeacher,
       assignRole,
+      assignCourseRole,
+      courseAssignments,
     }),
-    [ready, session, notice, signIn, changePin, adminResetPin, signOut, signInTeachers, directory, updateTeacher, assignRole],
+    [ready, session, notice, signIn, changePin, adminResetPin, signOut, signInTeachers, directory, updateTeacher, assignRole, assignCourseRole, courseAssignments],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

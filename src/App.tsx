@@ -1,8 +1,11 @@
 import { useRef, useState } from "react";
 import { CopyPlus, FileDown, LogIn, LogOut, Menu, Printer, Trash2, X } from "lucide-react";
 import { AuthProvider, useAuth } from "./auth";
+import { CourseProvider, useCourses } from "./courses";
 import { DesignationsProvider } from "./designations";
 import { PeopleSection } from "./components/AccessPanels";
+import { CoursesPanel } from "./components/CoursesPanel";
+import { CourseSwitcher } from "./components/CourseSwitcher";
 import { AuthScreen, ChangePinDialog } from "./components/AuthScreen";
 import { BatchEditor, FooterEditor, HeaderEditor, LibraryEditor, StructureEditor } from "./components/panels";
 import { GridEditor } from "./components/GridEditor";
@@ -14,17 +17,28 @@ import { joinWithAnd, rotateIds } from "./lib/text";
 import { addDays, formatDayNumber, formatSlashDate, weekdayName } from "./lib/time";
 import { ScheduleProvider, useSchedule } from "./state";
 
-type Mode = "edit" | "preview";
+type Mode = "edit" | "preview" | "courses";
 
 function readHash(): Mode {
-  return window.location.hash.replace(/^#/, "").startsWith("preview") ? "preview" : "edit";
+  const hash = window.location.hash.replace(/^#/, "");
+  if (hash.startsWith("courses")) return "courses";
+  if (hash.startsWith("preview")) return "preview";
+  return "edit";
+}
+
+function modeLabel(item: Mode): string {
+  if (item === "edit") return "Editor";
+  if (item === "preview") return "Preview";
+  return "Courses";
 }
 
 function Shell() {
   const { state, dispatch, day } = useSchedule();
   const auth = useAuth();
+  const courses = useCourses();
   const role = auth.session?.role;
-  const canEdit = !auth.required || role === "super_admin" || role === "coordinator" || role === "temp_coordinator";
+  const roleCanEdit = !auth.required || role === "super_admin" || role === "coordinator" || role === "temp_coordinator";
+  const canEdit = courses.ready && courses.courses.length > 0 ? Boolean(courses.selected?.canEdit) : roleCanEdit;
   const canManageCatalog = !auth.required || role === "super_admin";
 
   const nextDate = addDays(day.date, 1);
@@ -41,9 +55,12 @@ function Shell() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showPin, setShowPin] = useState(false);
   const sheetRef = useRef<HTMLDivElement>(null);
-  const view: Mode = canEdit ? mode : "preview";
-  const showEditor = view !== "preview";
-  const showPreview = view !== "edit";
+  const isSuperAdmin = auth.session?.role === "super_admin";
+  const showCourses = mode === "courses" && isSuperAdmin;
+  const view: Mode = showCourses ? "courses" : canEdit ? (mode === "courses" ? "edit" : mode) : "preview";
+  const showEditor = view === "edit";
+  const showPreview = view === "preview";
+  const viewModes: Mode[] = isSuperAdmin ? ["edit", "preview", "courses"] : ["edit", "preview"];
 
   const nextIds = state.batches.map((batch) =>
     joinWithAnd(rotateIds(batch.roster, day.managers[batch.id] ?? [])),
@@ -60,6 +77,7 @@ function Shell() {
             {auth.session ? `${auth.session.teacherName} · ${roleLabel(auth.session.role)}` : "Class routine for the training course"}
           </div>
         </div>
+        <CourseSwitcher />
         <button
           type="button"
           className="toolbar-menu-btn"
@@ -72,7 +90,7 @@ function Shell() {
         <div className={menuOpen ? "toolbar-collapse open" : "toolbar-collapse"}>
           {canEdit ? (
             <div className="segmented" role="group" aria-label="View">
-              {(["edit", "preview"] as const).map((item) => (
+              {viewModes.map((item) => (
                 <button
                   key={item}
                   type="button"
@@ -82,7 +100,7 @@ function Shell() {
                     setMenuOpen(false);
                   }}
                 >
-                  {item === "edit" ? "Editor" : "Preview"}
+                  {modeLabel(item)}
                 </button>
               ))}
             </div>
@@ -144,7 +162,18 @@ function Shell() {
         className="workspace"
         data-editor={showEditor ? "true" : "false"}
         data-preview={showPreview ? "true" : "false"}
+        data-courses={showCourses ? "true" : "false"}
       >
+        {showCourses ? (
+          <main className="courses-pane no-print">
+            <div className="courses-pane-inner">
+              <header className="courses-pane-head">
+                <h1>Courses</h1>
+              </header>
+              <CoursesPanel />
+            </div>
+          </main>
+        ) : null}
         {showEditor ? (
           <aside className="editor-pane no-print">
             <div className="daybar">
@@ -268,7 +297,7 @@ function Shell() {
               <GridEditor day={day} />
             </div>
             {auth.session?.role === "super_admin" ? (
-              <Section title="Roles" summary="Assign a date range">
+              <Section title="Roles" summary="Assign a course and dates">
                 <PeopleSection />
               </Section>
             ) : null}
@@ -356,9 +385,11 @@ function Gate() {
 export default function App() {
   return (
     <AuthProvider>
-      <ScheduleProvider>
-        <Gate />
-      </ScheduleProvider>
+      <CourseProvider>
+        <ScheduleProvider>
+          <Gate />
+        </ScheduleProvider>
+      </CourseProvider>
     </AuthProvider>
   );
 }

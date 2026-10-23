@@ -11,6 +11,8 @@ import {
   type ReactNode,
 } from "react";
 import { isAuthMock, useAuth } from "./auth";
+import { useCourses } from "./courses";
+import { withCourseTitle } from "./lib/courses";
 import { createDemoState } from "./lib/demo";
 import { scheduleReducer, type Action } from "./lib/reducer";
 import { activeDay } from "./lib/schedule";
@@ -43,13 +45,12 @@ function initialState(): AppState {
 
 export function ScheduleProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
+  const courses = useCourses();
   const cloudOn = isSupabaseConfigured && !isAuthMock;
-  const role = auth.session?.role;
-  const canWrite =
-    cloudOn &&
-    (!auth.required || role === "super_admin" || role === "coordinator" || role === "temp_coordinator");
-  const canWriteCatalog = cloudOn && (!auth.required || role === "super_admin");
-  const canRead = cloudOn;
+  const target = courses.selected;
+  const canWrite = cloudOn && Boolean(target?.canEdit);
+  const canWriteCatalog = cloudOn && (!auth.required || auth.session?.role === "super_admin");
+  const canRead = cloudOn && courses.ready && Boolean(target) && (!auth.required || Boolean(auth.session));
   const [state, dispatch] = useReducer(scheduleReducer, undefined, initialState);
   const [persistError, setPersistError] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(() =>
@@ -58,7 +59,13 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const day = activeDay(state);
   const skipCloudSave = useRef(false);
+  const cloudReady = useRef(false);
+  const loadedScheduleId = useRef<string | null>(null);
+  const targetRef = useRef(target);
   const stateRef = useRef(state);
+  const localDocs = useRef(new Map<string, AppState>());
+  const localCourse = useRef<string | null>(null);
+  targetRef.current = target;
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
@@ -71,65 +78,35 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(timer);
   }, [state]);
 
-  // False until the first cloud read settles. Strict Mode runs effects twice on
-  // mount; saving before that second pass uploads the empty local schedule.
-  const cloudReady = useRef(false);
-
-  // Cloud sync debounced persistence
+  // Mock and offline previews keep a document per course in this tab.
   useEffect(() => {
-    if (!canWrite || !cloudReady.current) {
+    if (cloudOn || !courses.ready || !target) return;
+    if (localCourse.current === target.id) return;
+    if (localCourse.current) localDocs.current.set(localCourse.current, stateRef.current);
+    const previous = localCourse.current;
+    localCourse.current = target.id;
+    const stored = localDocs.current.get(target.id);
+    if (stored) {
+      skipCloudSave.current = true;
+      dispatch({ type: "replace", state: stored });
       return;
     }
-
-    if (skipCloudSave.current) {
-      skipCloudSave.current = false;
-      return;
+    if (previous) {
+      skipCloudSave.current = true;
+      const next = withCourseTitle(stateRef.current, target.name);
+      localDocs.current.set(target.id, next);
+      dispatch({ type: "replace", state: next });
     }
+  }, [cloudOn, courses.ready, target]);
 
-    if (!navigator.onLine) {
-      setSyncStatus("offline");
-      return;
-    }
-
-    setSyncStatus("saving");
-    const timer = window.setTimeout(async () => {
-      const ok = await upsertRemoteSchedule(state, { catalogs: canWriteCatalog });
-      if (ok) {
-        setSyncStatus("connected");
-        setLastSyncedAt(new Date());
-      } else {
-        setSyncStatus("error");
-      }
-    }, 600);
-
-    return () => window.clearTimeout(timer);
-  }, [state, canWrite, canWriteCatalog]);
-
-  function applyRemote(next: AppState) {
-    skipCloudSave.current = true;
-    dispatch({ type: "replace", state: next });
-    saveState(next);
-  }
-
-  // Manual refresh / pull
-  const refreshFromCloud = useCallback(async () => {
-    if (!canRead) return;
-    setSyncStatus("saving");
-    const remote = await loadRemoteSchedule();
-    if (remote.error || !remote.state) {
-      setSyncStatus("error");
-      return;
-    }
-    applyRemote(remote.state);
-    setSyncStatus("connected");
-    setLastSyncedAt(new Date());
-  }, [canRead]);
-
-  // Initial load from cloud and realtime subscription setup
+  // Load the selected course before any save of this document can start.
   useEffect(() => {
-    if (!canRead) return;
+    if (!canRead || !target) return;
 
     let mounted = true;
+    cloudReady.current = false;
+    const scheduleId = target.scheduleId;
+    const courseId = target.courseId;
 
     async function initCloud() {
       if (!navigator.onLine) {
@@ -138,8 +115,8 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       }
 
       setSyncStatus("saving");
-      const remote = await loadRemoteSchedule();
-      if (!mounted) return;
+      const remote = await loadRemoteSchedule({ scheduleId, courseId });
+      if (!mounted || targetRef.current?.scheduleId !== scheduleId) return;
 
       if (remote.error) {
         setSyncStatus("error");
@@ -147,13 +124,18 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       }
 
       cloudReady.current = true;
+      loadedScheduleId.current = scheduleId;
 
       if (remote.state) {
         applyRemote(remote.state);
         setSyncStatus("connected");
         setLastSyncedAt(new Date());
-      } else if (canWrite) {
-        const ok = await upsertRemoteSchedule(stateRef.current, { catalogs: canWriteCatalog });
+      } else if (targetRef.current?.canEdit) {
+        const ok = await upsertRemoteSchedule(stateRef.current, {
+          catalogs: canWriteCatalog,
+          scheduleId,
+          courseId,
+        });
         if (mounted) {
           setSyncStatus(ok ? "connected" : "error");
           if (ok) setLastSyncedAt(new Date());
@@ -165,15 +147,13 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
 
     void initCloud();
 
-    // Subscribe to remote changes from other clients
     const unsubscribe = subscribeToRemoteSchedule((remoteState) => {
-      if (!mounted) return;
+      if (!mounted || targetRef.current?.scheduleId !== scheduleId) return;
       applyRemote(remoteState);
       setSyncStatus("connected");
       setLastSyncedAt(new Date());
-    });
+    }, { scheduleId, courseId });
 
-    // Handle online/offline events
     const handleOnline = () => {
       if (mounted) void initCloud();
     };
@@ -186,11 +166,64 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
 
     return () => {
       mounted = false;
+      cloudReady.current = false;
       if (unsubscribe) unsubscribe();
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [canRead, canWrite, canWriteCatalog]);
+  }, [canRead, canWriteCatalog, target]);
+
+  useEffect(() => {
+    if (!canWrite || !cloudReady.current) return;
+    if (skipCloudSave.current) {
+      skipCloudSave.current = false;
+      return;
+    }
+    const saving = targetRef.current;
+    if (!saving || saving.scheduleId !== loadedScheduleId.current) return;
+    if (!navigator.onLine) {
+      setSyncStatus("offline");
+      return;
+    }
+
+    setSyncStatus("saving");
+    const timer = window.setTimeout(async () => {
+      if (targetRef.current?.scheduleId !== saving.scheduleId) return;
+      const ok = await upsertRemoteSchedule(stateRef.current, {
+        catalogs: canWriteCatalog,
+        scheduleId: saving.scheduleId,
+        courseId: saving.courseId,
+      });
+      if (ok) {
+        setSyncStatus("connected");
+        setLastSyncedAt(new Date());
+      } else {
+        setSyncStatus("error");
+      }
+    }, 600);
+
+    return () => window.clearTimeout(timer);
+  }, [state, canWrite, canWriteCatalog, target]);
+
+  function applyRemote(next: AppState) {
+    skipCloudSave.current = true;
+    dispatch({ type: "replace", state: next });
+    saveState(next);
+  }
+
+  const refreshFromCloud = useCallback(async () => {
+    const current = targetRef.current;
+    if (!canRead || !current) return;
+    setSyncStatus("saving");
+    const remote = await loadRemoteSchedule({ scheduleId: current.scheduleId, courseId: current.courseId });
+    if (remote.error || !remote.state) {
+      setSyncStatus("error");
+      return;
+    }
+    applyRemote(remote.state);
+    setSyncStatus("connected");
+    setLastSyncedAt(new Date());
+  }, [canRead]);
 
   const store = useMemo<Store>(
     () => ({

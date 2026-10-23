@@ -1,6 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { screenshotMode } from "./flags";
+import type { CourseAssignment } from "./lib/courses";
 import { supabase } from "./lib/supabase";
-import { pinError, syntheticEmail, type AppRole, type StoredRole } from "./lib/roles";
+import { canEditSchedule, pinError, syntheticEmail, type AppRole, type StoredRole } from "./lib/roles";
 
 const PIN_MIGRATION = "supabase/migration_add_teacher_pin.sql";
 
@@ -42,6 +44,16 @@ type AuthValue = {
     roleStart: string | null,
     roleEnd: string | null,
   ) => Promise<string | null>;
+  assignCourseRole: (
+    teacherId: string,
+    role: Exclude<StoredRole, "super_admin">,
+    roleStart: string | null,
+    roleEnd: string | null,
+    courseId: string | null,
+  ) => Promise<string | null>;
+  courseAssignments: () => Promise<CourseAssignment[]>;
+  loadDesignation: () => Promise<string>;
+  saveDesignation: (designation: string) => Promise<string | null>;
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -98,9 +110,40 @@ async function readSupabaseSession(): Promise<SessionView | null> {
   };
 }
 
+function screenshotSession(): SessionView {
+  const search = (globalThis as { location?: { search?: string } }).location?.search ?? "";
+  const role: AppRole = search.includes("role=teacher")
+    ? "teacher"
+    : search.includes("role=temp")
+      ? "temp_coordinator"
+      : search.includes("role=super")
+        ? "super_admin"
+        : "coordinator";
+  const dated = role === "coordinator" || role === "temp_coordinator";
+  const teacherName =
+    role === "super_admin"
+      ? "Super admin"
+      : role === "teacher"
+        ? "Teacher"
+        : role === "temp_coordinator"
+          ? "Temporary coordinator"
+          : "Dr. Litan Kanti Halder";
+  return {
+    userId: "screenshot",
+    username: role,
+    email: syntheticEmail(role),
+    teacherId: "screenshot",
+    teacherName,
+    role,
+    storedRole: role,
+    roleStart: dated ? "2026-01-01" : null,
+    roleEnd: dated ? "2026-12-31" : null,
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<SessionView | null>(null);
-  const [ready, setReady] = useState(false);
+  const [session, setSession] = useState<SessionView | null>(() => (screenshotMode ? screenshotSession() : null));
+  const [ready, setReady] = useState(screenshotMode);
   const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -116,6 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (screenshotMode) return;
     const { data } = supabase.auth.onAuthStateChange(() => {
       void refresh();
     });
@@ -148,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const problem = pinError(newPin);
     if (problem) return problem;
     if (oldPin === newPin) return "Choose a different PIN.";
+    if (screenshotMode) return null;
     const { error } = await supabase.rpc("change_pin", { old_pin: oldPin, new_pin: newPin });
     return error ? pinMigrationHint(error.message) : null;
   }, []);
@@ -160,7 +205,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    if (!screenshotMode) await supabase.auth.signOut();
     setSession(null);
     setNotice(null);
   }, []);
@@ -214,6 +259,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const courseAssignments = useCallback(async () => {
+    if (screenshotMode) return [];
+    const { data, error } = await supabase.rpc("list_course_assignments");
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+      teacherId: String(row.teacher_id),
+      courseId: String(row.course_id),
+      role: row.role === "temp_coordinator" ? "temp_coordinator" as const : "coordinator" as const,
+      roleStart: String(row.role_start).slice(0, 10),
+      roleEnd: String(row.role_end).slice(0, 10),
+    }));
+  }, []);
+
+  const assignCourseRole = useCallback(
+    async (
+      teacherId: string,
+      role: Exclude<StoredRole, "super_admin">,
+      roleStart: string | null,
+      roleEnd: string | null,
+      courseId: string | null,
+    ) => {
+      if (screenshotMode) return null;
+      const { error } = await supabase.rpc("assign_course_role", {
+        target_teacher: teacherId,
+        next_role: role,
+        start_on: roleStart,
+        end_on: roleEnd,
+        target_course: courseId,
+      });
+      if (!error) {
+        try {
+          setSession(await readSupabaseSession());
+        } catch {
+          // The directory reload still shows the saved role.
+        }
+      }
+      return error ? error.message : null;
+    },
+    [],
+  );
+
+  const loadDesignation = useCallback(async () => {
+    if (screenshotMode || !session) return "Assistant Director";
+    const { data, error } = await supabase.from("teachers").select("designation").eq("id", session.teacherId).maybeSingle();
+    if (error) throw new Error(error.message);
+    return typeof data?.designation === "string" ? data.designation : "";
+  }, [session]);
+
+  const saveDesignation = useCallback(async (designation: string) => {
+    if (screenshotMode) return null;
+    const { error } = await supabase.rpc("set_my_designation", { next_designation: designation.trim() });
+    return error ? error.message : null;
+  }, []);
+
   const value = useMemo<AuthValue>(
     () => ({
       ready,
@@ -226,8 +325,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInTeachers,
       directory,
       assignRole,
+      assignCourseRole,
+      courseAssignments,
+      loadDesignation,
+      saveDesignation,
     }),
-    [ready, session, notice, signIn, changePin, adminResetPin, signOut, signInTeachers, directory, assignRole],
+    [ready, session, notice, signIn, changePin, adminResetPin, signOut, signInTeachers, directory, assignRole, assignCourseRole, courseAssignments, loadDesignation, saveDesignation],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -244,7 +347,7 @@ export function useAccess() {
   const role = session?.role ?? null;
   return {
     role,
-    canEdit: role === "super_admin" || role === "coordinator" || role === "temp_coordinator",
+    canEdit: canEditSchedule(role),
     canAdmin: role === "super_admin",
     cloudSession: Boolean(session),
   };

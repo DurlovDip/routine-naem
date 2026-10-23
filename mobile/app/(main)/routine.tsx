@@ -1,25 +1,58 @@
 import Ionicons from "@expo/vector-icons/Ionicons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ScrollView, View } from "react-native";
-import { useAccess } from "../../src/auth";
+import { useAccess, useAuth } from "../../src/auth";
+import { screenshotMode } from "../../src/flags";
+import { mineEmptyLabel, mySessions, type MySession } from "../../src/lib/mine";
 import { buildTimeline, rowCells, type SheetCell } from "../../src/lib/schedule";
 import { batchLines, cleanBatchNumber, formatModule, joinWithAnd, orderedManagers, sessionSpanLabel } from "../../src/lib/text";
-import { formatDayNumber, formatRange, formatSlashDate, weekdayName } from "../../src/lib/time";
+import { dayWhen, formatDayNumber, formatRange, formatSlashDate, todayInDhaka, weekdayName } from "../../src/lib/time";
 import { downloadRoutine } from "../../src/pdf";
 import { useSchedule } from "../../src/store";
-import { colors } from "../../src/theme";
-import { Button, Segmented, T } from "../../src/ui";
+import { card, colors, radius, space, type } from "../../src/theme";
+import { Button, DayChip, Segmented, T } from "../../src/ui";
 
-type ViewMode = "list" | "table";
+type Pane = "mine" | "routine";
+
+const PANE_KEY = "routine-naem-routine-pane";
+
+function shotSearch(): string {
+  return (globalThis as { location?: { search?: string } }).location?.search ?? "";
+}
 
 export default function RoutineScreen() {
   const router = useRouter();
   const access = useAccess();
+  const auth = useAuth();
   const { state, dispatch, day, hydrated } = useSchedule();
-  const [mode, setMode] = useState<ViewMode>("list");
+  const [pane, setPane] = useState<Pane>(() => (screenshotMode && shotSearch().includes("mine=1") ? "mine" : "routine"));
+  const [table, setTable] = useState(() => screenshotMode && shotSearch().includes("table=1"));
+  const [prefsReady, setPrefsReady] = useState(screenshotMode);
   const timeline = buildTimeline(day);
-  const title = state.header.find((line) => line.style === "title")?.text;
+  const mine = mySessions(state.batches, state.teachers, day, auth.session?.teacherId ?? "", auth.session?.teacherName ?? "");
+
+  useEffect(() => {
+    if (screenshotMode) return;
+    void AsyncStorage.getItem(PANE_KEY).then((raw) => {
+      if (raw) {
+        try {
+          const saved = JSON.parse(raw) as { pane?: string; table?: boolean };
+          if (saved.pane === "mine" || saved.pane === "routine") setPane(saved.pane);
+          if (typeof saved.table === "boolean") setTable(saved.table);
+        } catch {
+          // Ignore a corrupt preference and keep the first-open default.
+        }
+      }
+      setPrefsReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!prefsReady || screenshotMode) return;
+    void AsyncStorage.setItem(PANE_KEY, JSON.stringify({ pane, table }));
+  }, [pane, table, prefsReady]);
   const rows = state.batches.map((batch) => ({
     batch,
     managers: orderedManagers(batch.roster, day.managers[batch.id] ?? []),
@@ -28,20 +61,17 @@ export default function RoutineScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.desk }}>
-      <View style={{ paddingTop: 12, gap: 10 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16, alignItems: "center" }}>
-          {state.days.map((item) => {
-            const on = item.id === day.id;
-            return (
-              <Button
-                key={item.id}
-                small
-                tone={on ? "primary" : "ghost"}
-                label={`${formatDayNumber(item.dayNumber).replace("Day – ", "Day ")}  ${formatSlashDate(item.date)}`}
-                onPress={() => dispatch({ type: "set-active-day", id: item.id })}
-              />
-            );
-          })}
+      <View style={{ paddingTop: space.md, gap: space.md }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingHorizontal: space.lg, alignItems: "center" }}>
+          {state.days.map((item) => (
+            <DayChip
+              key={item.id}
+              selected={item.id === day.id}
+              when={dayWhen(item.date, todayInDhaka())}
+              label={formatDayNumber(item.dayNumber).replace("Day – ", "Day ")}
+              onPress={() => dispatch({ type: "set-active-day", id: item.id })}
+            />
+          ))}
           {access.canEdit ? (
             <Button
               small
@@ -52,28 +82,41 @@ export default function RoutineScreen() {
             />
           ) : null}
         </ScrollView>
-        <View style={{ paddingHorizontal: 16, gap: 8 }}>
-          {title ? <T weight="semibold" style={{ fontSize: 13 }}>{title}</T> : null}
-          <T style={{ color: colors.muted, fontSize: 12 }}>
+        <View style={{ paddingHorizontal: space.lg, gap: space.sm }}>
+          <T style={{ color: colors.muted, fontSize: type.caption }}>
             {formatSlashDate(day.date)}
             {weekdayName(day.date) ? ` · ${weekdayName(day.date)}` : ""} · {formatDayNumber(day.dayNumber)}
           </T>
           <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
             <View style={{ flex: 1 }}>
               <Segmented
-                label="Routine view"
-                value={mode}
-                onChange={setMode}
+                label="Schedule"
+                value={pane}
+                onChange={setPane}
                 options={[
-                  { value: "list", label: "Batches" },
-                  { value: "table", label: "Table" },
+                  { value: "mine", label: "Mine" },
+                  { value: "routine", label: "Routine" },
                 ]}
               />
             </View>
+            {pane === "routine" ? (
+              <Button
+                square
+                tone="ghost"
+                icon={<Ionicons name={table ? "list-outline" : "grid-outline"} size={20} color={colors.ink} />}
+                testID="routine-table-toggle"
+                accessibilityLabel={table ? "Batch view" : "Table view"}
+                onPress={() => setTable((current) => !current)}
+              />
+            ) : (
+              <View style={{ width: 44, height: 44 }} />
+            )}
             <Button
-              label="Download"
-              icon={<Ionicons name="download-outline" size={16} color="#fff" />}
+              square
               tone="primary"
+              icon={<Ionicons name="download-outline" size={20} color="#fff" />}
+              testID="routine-download"
+              accessibilityLabel="Download PDF"
               onPress={() => void downloadRoutine(state, day)}
             />
           </View>
@@ -81,17 +124,47 @@ export default function RoutineScreen() {
       </View>
       {!hydrated ? (
         <T style={{ padding: 16, color: colors.muted }}>Loading routine…</T>
-      ) : mode === "list" ? (
-        <ScrollView testID="routine-list" contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 28 }}>
-          {rows.length === 0 ? <Empty /> : rows.map((row) => <BatchCard key={row.batch.id} row={row} timeline={timeline} recap={state.recapLabel} />)}
+      ) : pane === "mine" ? (
+        <ScrollView testID="routine-mine" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }}>
+          {mine.length === 0 ? (
+            <View style={card}>
+              <T style={{ color: colors.muted }}>{mineEmptyLabel(day.dayNumber)}</T>
+            </View>
+          ) : (
+            mine.map((item) => <MineCard key={item.key} item={item} />)
+          )}
         </ScrollView>
-      ) : (
+      ) : table ? (
         <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
           <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ padding: 16 }}>
             <Table rows={rows} timeline={timeline} recap={state.recapLabel} />
           </ScrollView>
         </ScrollView>
+      ) : (
+        <ScrollView testID="routine-list" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }}>
+          {rows.length === 0 ? <Empty /> : rows.map((row) => <BatchCard key={row.batch.id} row={row} timeline={timeline} recap={state.recapLabel} />)}
+        </ScrollView>
       )}
+    </View>
+  );
+}
+
+function MineCard({ item }: { item: MySession }) {
+  return (
+    <View style={card}>
+      <View style={{ flexDirection: "row", alignItems: "baseline", gap: space.sm }}>
+        <T weight="bold" style={{ flex: 1, fontSize: type.title }}>{item.label}</T>
+        <T style={{ color: colors.muted, fontSize: type.caption }}>{formatRange(item.start, item.end)}</T>
+      </View>
+      <T style={{ color: colors.muted, fontSize: type.caption, marginTop: 2 }}>{item.batchLabel}</T>
+      {item.module ? (
+        <T weight="semibold" style={{ marginTop: 8 }}>{item.module}</T>
+      ) : (
+        <T style={{ color: colors.muted, marginTop: 8 }}>Empty</T>
+      )}
+      {item.coTeachers.length > 0 ? (
+        <T style={{ marginTop: 2 }}>with {joinWithAnd(item.coTeachers)}</T>
+      ) : null}
     </View>
   );
 }
@@ -115,8 +188,8 @@ function BatchCard({
 }) {
   return (
     <View style={card}>
-      <T weight="bold" style={{ fontSize: 16 }}>{batchLines(row.batch.name, row.batch.id).join(" ")}</T>
-      <T style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
+      <T weight="bold" style={{ fontSize: type.title }}>{batchLines(row.batch.name, row.batch.id).join(" ")}</T>
+      <T style={{ color: colors.muted, fontSize: type.caption, marginTop: 2 }}>
         {recap}: {row.managers.length ? `ID No.- ${joinWithAnd(row.managers)}` : "—"}
       </T>
       <View style={{ marginTop: 10, gap: 8 }}>
@@ -215,16 +288,8 @@ function TableCell({
   );
 }
 
-const card = {
-  backgroundColor: colors.surface,
-  borderWidth: 1,
-  borderColor: colors.line,
-  borderRadius: 12,
-  padding: 12,
-} as const;
-
 const session = {
   backgroundColor: colors.paper,
-  borderRadius: 8,
-  padding: 8,
+  borderRadius: radius.md,
+  padding: space.md,
 } as const;
