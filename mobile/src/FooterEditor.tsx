@@ -7,7 +7,7 @@ import { readSignatureFile, readSignatureUri } from "./lib/signature";
 import { formatSignatureDate, toIsoDate } from "./lib/time";
 import { STANDARD_DESIGNATIONS } from "./lib/types";
 import { useSchedule } from "./store";
-import { colors } from "./theme";
+import { card, colors, radius, space } from "./theme";
 import { Button, CheckRow, Field, Label, Select, T } from "./ui";
 
 export function FooterEditor() {
@@ -104,7 +104,7 @@ export function FooterEditor() {
   }
 
   return (
-    <View testID="signature-footer-editor" style={card}>
+    <View testID="signature-footer-editor" style={footerCard}>
       <View>
         <T weight="bold" style={{ color: colors.accent, fontSize: 15 }}>Signature & footer</T>
         <T style={{ color: colors.muted, fontSize: 12, marginTop: 2, lineHeight: 17 }}>
@@ -295,16 +295,7 @@ function localIso(date: Date): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-const card = {
-  backgroundColor: colors.surface,
-  borderWidth: 1,
-  borderColor: colors.line,
-  borderRadius: 12,
-  borderLeftWidth: 3,
-  borderLeftColor: colors.accent,
-  padding: 12,
-  gap: 12,
-} as const;
+const footerCard = { ...card, gap: space.md } as const;
 
 const preview = {
   height: 80,
@@ -321,13 +312,11 @@ const preview = {
 
 const dateButton = {
   flex: 1,
-  minHeight: 40,
-  borderWidth: 1,
-  borderColor: colors.line,
-  borderRadius: 8,
-  backgroundColor: colors.surface,
+  minHeight: 48,
+  borderRadius: radius.md,
+  backgroundColor: colors.paper,
   justifyContent: "center" as const,
-  paddingHorizontal: 10,
+  paddingHorizontal: space.md,
 };
 
 const fileInput = {
@@ -349,10 +338,8 @@ const dateInput = {
 };
 
 const coordinatorBox = {
-  borderWidth: 1,
-  borderColor: colors.line,
   backgroundColor: colors.paper,
-  borderRadius: 8,
-  padding: 12,
+  borderRadius: radius.md,
+  padding: space.md,
   gap: 4,
 };

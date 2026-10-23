@@ -5,7 +5,7 @@ import { Modal, Platform, Pressable, ScrollView, View } from "react-native";
 import { useCourses } from "./courses";
 import { courseStatusLabel, isCourseStatus, type CourseDraft, type CourseStatus, type CourseSummary } from "./lib/courses";
 import { formatSlashDate, toIsoDate } from "./lib/time";
-import { colors } from "./theme";
+import { card, colors, radius, space } from "./theme";
 import { Button, Field, Label, Segmented, T } from "./ui";
 
 const FILTERS = ["all", "active", "inactive", "ended"] as const;
@@ -82,7 +82,7 @@ export function CoursesPanel() {
         onChange={setFilter}
         options={FILTERS.map((item) => ({ value: item, label: item === "all" ? "All" : courseStatusLabel(item) }))}
       />
-      <View testID="new-course-form" style={card}>
+      <View testID="new-course-form" style={courseCard}>
         <T weight="semibold" style={{ fontSize: 16 }}>New course</T>
         <View>
           <Label>Name</Label>
@@ -214,7 +214,7 @@ function CourseCard({
   }
 
   return (
-    <View testID={`course-card-${course.id}`} style={card}>
+    <View testID={`course-card-${course.id}`} style={courseCard}>
       <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
         <T weight="semibold" style={{ flex: 1, fontSize: 16 }}>{course.name}</T>
         <StatusBadge status={draft.status} open={current} />
@@ -365,24 +365,15 @@ function localIso(date: Date): string {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-const card = {
-  backgroundColor: colors.surface,
-  borderWidth: 1,
-  borderColor: colors.line,
-  borderRadius: 12,
-  padding: 12,
-  gap: 10,
-} as const;
+const courseCard = { ...card, gap: space.md } as const;
 
 const dateButton = {
   flex: 1,
-  minHeight: 40,
-  borderWidth: 1,
-  borderColor: colors.line,
-  borderRadius: 8,
-  backgroundColor: colors.surface,
+  minHeight: 48,
+  borderRadius: radius.md,
+  backgroundColor: colors.paper,
   justifyContent: "center" as const,
-  paddingHorizontal: 10,
+  paddingHorizontal: space.md,
 };
 
 const backdrop = {

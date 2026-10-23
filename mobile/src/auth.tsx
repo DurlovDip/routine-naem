@@ -52,6 +52,8 @@ type AuthValue = {
     courseId: string | null,
   ) => Promise<string | null>;
   courseAssignments: () => Promise<CourseAssignment[]>;
+  loadDesignation: () => Promise<string>;
+  saveDesignation: (designation: string) => Promise<string | null>;
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -190,6 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const problem = pinError(newPin);
     if (problem) return problem;
     if (oldPin === newPin) return "Choose a different PIN.";
+    if (screenshotMode) return null;
     const { error } = await supabase.rpc("change_pin", { old_pin: oldPin, new_pin: newPin });
     return error ? pinMigrationHint(error.message) : null;
   }, []);
@@ -297,6 +300,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const loadDesignation = useCallback(async () => {
+    if (screenshotMode || !session) return "Assistant Director";
+    const { data, error } = await supabase.from("teachers").select("designation").eq("id", session.teacherId).maybeSingle();
+    if (error) throw new Error(error.message);
+    return typeof data?.designation === "string" ? data.designation : "";
+  }, [session]);
+
+  const saveDesignation = useCallback(async (designation: string) => {
+    if (screenshotMode) return null;
+    const { error } = await supabase.rpc("set_my_designation", { next_designation: designation.trim() });
+    return error ? error.message : null;
+  }, []);
+
   const value = useMemo<AuthValue>(
     () => ({
       ready,
@@ -311,8 +327,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       assignRole,
       assignCourseRole,
       courseAssignments,
+      loadDesignation,
+      saveDesignation,
     }),
-    [ready, session, notice, signIn, changePin, adminResetPin, signOut, signInTeachers, directory, assignRole, assignCourseRole, courseAssignments],
+    [ready, session, notice, signIn, changePin, adminResetPin, signOut, signInTeachers, directory, assignRole, assignCourseRole, courseAssignments, loadDesignation, saveDesignation],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

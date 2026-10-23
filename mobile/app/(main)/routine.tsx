@@ -3,14 +3,13 @@ import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useAccess, useAuth } from "../../src/auth";
-import { CourseSwitcher } from "../../src/CourseSwitcher";
 import { routineCoordinatorLabel, routineCourseLabel } from "../../src/lib/header";
 import { buildTimeline, rowCells, type SheetCell } from "../../src/lib/schedule";
 import { batchLines, cleanBatchNumber, formatModule, joinWithAnd, orderedManagers, sessionSpanLabel } from "../../src/lib/text";
 import { formatDayNumber, formatRange, formatSlashDate, weekdayName } from "../../src/lib/time";
 import { downloadRoutine } from "../../src/pdf";
 import { useSchedule } from "../../src/store";
-import { colors } from "../../src/theme";
+import { card, colors, radius, space, type } from "../../src/theme";
 import { Button, Segmented, T } from "../../src/ui";
 
 type ViewMode = "list" | "table";
@@ -36,9 +35,8 @@ export default function RoutineScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.desk }}>
-      <View style={{ paddingTop: 12, gap: 10 }}>
-        <CourseSwitcher />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16, alignItems: "center" }}>
+      <View style={{ paddingTop: space.md, gap: space.md }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingHorizontal: space.lg, alignItems: "center" }}>
           {state.days.map((item) => {
             const on = item.id === day.id;
             return (
@@ -61,22 +59,22 @@ export default function RoutineScreen() {
             />
           ) : null}
         </ScrollView>
-        <View style={{ paddingHorizontal: 16, gap: 6 }}>
+        <View style={{ paddingHorizontal: space.lg, gap: space.sm }}>
           {course || coordinator ? (
-            <View testID="routine-banner" style={{ gap: 1 }}>
+            <View testID="routine-banner" style={{ gap: 2 }}>
               {course ? (
-                <T weight="bold" numberOfLines={2} style={{ fontSize: 16, lineHeight: 20 }}>
+                <T weight="bold" numberOfLines={2} style={{ fontSize: type.title, lineHeight: 22 }}>
                   {course}
                 </T>
               ) : null}
               {coordinator ? (
-                <T numberOfLines={1} style={{ color: colors.muted, fontSize: 12, lineHeight: 16 }}>
+                <T numberOfLines={1} style={{ color: colors.muted, fontSize: type.caption, lineHeight: 16 }}>
                   {coordinator}
                 </T>
               ) : null}
             </View>
           ) : null}
-          <T style={{ color: colors.muted, fontSize: 12 }}>
+          <T style={{ color: colors.muted, fontSize: type.caption }}>
             {formatSlashDate(day.date)}
             {weekdayName(day.date) ? ` · ${weekdayName(day.date)}` : ""} · {formatDayNumber(day.dayNumber)}
           </T>
@@ -104,7 +102,7 @@ export default function RoutineScreen() {
       {!hydrated ? (
         <T style={{ padding: 16, color: colors.muted }}>Loading routine…</T>
       ) : mode === "list" ? (
-        <ScrollView testID="routine-list" contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 28 }}>
+        <ScrollView testID="routine-list" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }}>
           {rows.length === 0 ? <Empty /> : rows.map((row) => <BatchCard key={row.batch.id} row={row} timeline={timeline} recap={state.recapLabel} />)}
         </ScrollView>
       ) : (
@@ -137,8 +135,8 @@ function BatchCard({
 }) {
   return (
     <View style={card}>
-      <T weight="bold" style={{ fontSize: 16 }}>{batchLines(row.batch.name, row.batch.id).join(" ")}</T>
-      <T style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
+      <T weight="bold" style={{ fontSize: type.title }}>{batchLines(row.batch.name, row.batch.id).join(" ")}</T>
+      <T style={{ color: colors.muted, fontSize: type.caption, marginTop: 2 }}>
         {recap}: {row.managers.length ? `ID No.- ${joinWithAnd(row.managers)}` : "—"}
       </T>
       <View style={{ marginTop: 10, gap: 8 }}>
@@ -237,16 +235,8 @@ function TableCell({
   );
 }
 
-const card = {
-  backgroundColor: colors.surface,
-  borderWidth: 1,
-  borderColor: colors.line,
-  borderRadius: 12,
-  padding: 12,
-} as const;
-
 const session = {
   backgroundColor: colors.paper,
-  borderRadius: 8,
-  padding: 8,
+  borderRadius: radius.md,
+  padding: space.md,
 } as const;

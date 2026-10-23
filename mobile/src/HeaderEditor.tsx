@@ -2,15 +2,15 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { View } from "react-native";
 import { HEADER_STYLES, headerStyleFromLabel, headerStyleLabel } from "./lib/header";
 import { useSchedule } from "./store";
-import { colors } from "./theme";
+import { card, colors, type } from "./theme";
 import { Button, Field, Label, Select, T } from "./ui";
 
 export function HeaderEditor() {
   const { state, dispatch } = useSchedule();
   return (
-    <View testID="routine-header-editor" style={card}>
+    <View testID="routine-header-editor" style={headerCard}>
       <View>
-        <T weight="bold" style={{ color: colors.accent, fontSize: 15 }}>Routine header & title</T>
+        <T weight="semibold" style={{ fontSize: type.title }}>Routine header & title</T>
         <T style={{ color: colors.muted, fontSize: 12, marginTop: 2, lineHeight: 17 }}>
           Scheme, course, and duration. The course title is the bold heading on the routine and the PDF.
         </T>
@@ -74,13 +74,4 @@ export function HeaderEditor() {
   );
 }
 
-const card = {
-  backgroundColor: colors.surface,
-  borderWidth: 1,
-  borderColor: colors.line,
-  borderRadius: 12,
-  borderLeftWidth: 3,
-  borderLeftColor: colors.accent,
-  padding: 12,
-  gap: 10,
-} as const;
+const headerCard = { ...card, gap: 10 } as const;

@@ -2054,6 +2054,30 @@ begin
   end if;
 end $$;
 
+-- A teacher may set their own designation. The row policy stays super-admin only.
+create or replace function public.set_my_designation(next_designation text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Sign in first';
+  end if;
+  update public.teachers
+  set designation = coalesce(btrim(next_designation), ''),
+      updated_at = now()
+  where auth_user_id = auth.uid();
+  if not found then
+    raise exception 'No teacher row for this account';
+  end if;
+end;
+$$;
+
+revoke all on function public.set_my_designation(text) from public;
+grant execute on function public.set_my_designation(text) to authenticated;
+
 -- ------------------------------------------------------------------------
 -- 10. SUMMARY
 -- ------------------------------------------------------------------------

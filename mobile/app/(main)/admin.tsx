@@ -12,7 +12,7 @@ import { isIsoDate } from "../../src/lib/time";
 import { designationChoices } from "../../src/lib/designations";
 import { type ModuleEntry, type Teacher } from "../../src/lib/types";
 import { useSchedule } from "../../src/store";
-import { colors } from "../../src/theme";
+import { card, colors } from "../../src/theme";
 import { Button, Field, Label, Segmented, Select, T } from "../../src/ui";
 
 type Panel = "courses" | "teachers" | "modules" | "batches" | "roles";
@@ -469,10 +469,3 @@ function RoleRow({
   );
 }
 
-const card = {
-  backgroundColor: colors.surface,
-  borderWidth: 1,
-  borderColor: colors.line,
-  borderRadius: 12,
-  padding: 12,
-} as const;

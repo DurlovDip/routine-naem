@@ -4,13 +4,12 @@ import { useEffect, useState } from "react";
 import { Alert, Pressable, ScrollView, View } from "react-native";
 import { useAccess } from "../../../src/auth";
 import { useCourses } from "../../../src/courses";
-import { CourseSwitcher } from "../../../src/CourseSwitcher";
 import { buildTimeline, cellHasConflict, findConflicts, maxSpanFrom, rowCells, type SheetSession } from "../../../src/lib/schedule";
 import { cleanBatchNumber, formatModuleCode, orderedManagers, parseModuleCode, rosterRange, sessionSpanLabel } from "../../../src/lib/text";
 import { addDays, formatDayNumber, formatRange, formatSlashDate, isIsoDate, weekdayName } from "../../../src/lib/time";
 import type { Batch, CellContent, DayPlan } from "../../../src/lib/types";
 import { useSchedule } from "../../../src/store";
-import { colors } from "../../../src/theme";
+import { card, colors, radius, space } from "../../../src/theme";
 import { Button, CheckRow, Field, Label, Select, T } from "../../../src/ui";
 
 export default function EditorScreen() {
@@ -54,28 +53,18 @@ export default function EditorScreen() {
   }
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: colors.desk }} contentContainerStyle={{ paddingBottom: 32, gap: 12 }} keyboardShouldPersistTaps="handled">
-      <View style={{ paddingTop: 12 }}>
-        <CourseSwitcher />
-      </View>
-      <View style={{ paddingHorizontal: 16, gap: 12 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: colors.desk }} contentContainerStyle={{ paddingBottom: 32, gap: space.md }} keyboardShouldPersistTaps="handled">
+      <View style={{ paddingHorizontal: space.lg, paddingTop: space.lg, gap: space.md }}>
       <Pressable
         testID="open-header-footer"
         accessibilityRole="button"
         accessibilityLabel="Header and footer"
         onPress={() => router.push("/(main)/editor/header-footer")}
         style={{
-          backgroundColor: colors.surface,
-          borderWidth: 1,
-          borderColor: colors.line,
-          borderRadius: 12,
-          borderLeftWidth: 3,
-          borderLeftColor: colors.accent,
-          paddingHorizontal: 12,
-          paddingVertical: 12,
+          ...card,
           flexDirection: "row",
           alignItems: "center",
-          gap: 10,
+          gap: space.sm,
         }}
       >
         <View style={{ flex: 1, gap: 2 }}>
@@ -110,16 +99,7 @@ export default function EditorScreen() {
       </ScrollView>
 
       {showDaySettings ? (
-        <View
-          style={{
-            backgroundColor: colors.surface,
-            borderWidth: 1,
-            borderColor: colors.line,
-            borderRadius: 12,
-            padding: 12,
-            gap: 12,
-          }}
-        >
+        <View style={{ ...card, gap: space.md }}>
           <View style={{ flexDirection: "row", gap: 8 }}>
             <View style={{ flex: 1 }}>
               <Label>Date</Label>
@@ -164,7 +144,7 @@ export default function EditorScreen() {
             />
           </View>
           {nextDayExists ? (
-            <View style={{ backgroundColor: colors.warnBg, borderColor: "#ead9b0", borderWidth: 1, borderRadius: 8, padding: 8, gap: 6 }}>
+            <View style={{ backgroundColor: colors.warnBg, borderRadius: radius.md, padding: space.sm, gap: space.sm }}>
               <T style={{ color: colors.warn, fontSize: 12 }}>
                 Day {String(nextDayNum).padStart(2, "0")} ({formatSlashDate(nextDate)}) already exists.
               </T>
@@ -448,10 +428,3 @@ function Managers({ day, batch, managers }: { day: DayPlan; batch: Batch; manage
   );
 }
 
-const card = {
-  backgroundColor: colors.surface,
-  borderWidth: 1,
-  borderColor: colors.line,
-  borderRadius: 12,
-  padding: 12,
-} as const;
