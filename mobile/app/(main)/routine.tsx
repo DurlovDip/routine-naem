@@ -100,25 +100,25 @@ export default function RoutineScreen() {
               />
             </View>
             {pane === "routine" ? (
-              <>
-                <Button
-                  square
-                  tone="ghost"
-                  icon={<Ionicons name={table ? "list-outline" : "grid-outline"} size={20} color={colors.ink} />}
-                  testID="routine-table-toggle"
-                  accessibilityLabel={table ? "Batch view" : "Table view"}
-                  onPress={() => setTable((current) => !current)}
-                />
-                <Button
-                  square
-                  tone="primary"
-                  icon={<Ionicons name="download-outline" size={20} color="#fff" />}
-                  testID="routine-download"
-                  accessibilityLabel="Download PDF"
-                  onPress={() => void downloadRoutine(state, day)}
-                />
-              </>
-            ) : null}
+              <Button
+                square
+                tone="ghost"
+                icon={<Ionicons name={table ? "list-outline" : "grid-outline"} size={20} color={colors.ink} />}
+                testID="routine-table-toggle"
+                accessibilityLabel={table ? "Batch view" : "Table view"}
+                onPress={() => setTable((current) => !current)}
+              />
+            ) : (
+              <View style={{ width: 44, height: 44 }} />
+            )}
+            <Button
+              square
+              tone="primary"
+              icon={<Ionicons name="download-outline" size={20} color="#fff" />}
+              testID="routine-download"
+              accessibilityLabel="Download PDF"
+              onPress={() => void downloadRoutine(state, day)}
+            />
           </View>
         </View>
       </View>

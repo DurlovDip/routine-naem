@@ -166,7 +166,7 @@ function ProfileBody({
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const version = Constants.expoConfig?.version ?? "1.1.8";
+  const version = Constants.expoConfig?.version ?? "1.1.9";
 
   useEffect(() => {
     let mounted = true;
