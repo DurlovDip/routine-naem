@@ -2,6 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import Constants from "expo-constants";
 import { useEffect, useState } from "react";
 import { Modal, Pressable, ScrollView, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "./auth";
 import { ChangePinModal } from "./ChangePin";
 import { useCourses } from "./courses";
@@ -22,9 +23,13 @@ export function initials(name: string): string {
   return `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase();
 }
 
+const TAB_BAR_HEIGHT = 49;
+
 export function AppHeader() {
   const auth = useAuth();
   const courses = useCourses();
+  const insets = useSafeAreaInsets();
+  const aboveTabBar = TAB_BAR_HEIGHT + insets.bottom;
   const { syncStatus, syncError, refreshFromCloud, state, dispatch, designations } = useSchedule();
   const [coursesOpen, setCoursesOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -44,7 +49,7 @@ export function AppHeader() {
             accessibilityRole="button"
             accessibilityLabel={selected ? `Course ${selected.name}` : "Choose a course"}
             onPress={() => setCoursesOpen(true)}
-            style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+            style={courseMenu}
           >
             <T weight="semibold" numberOfLines={1} style={{ fontSize: type.title, flexShrink: 1 }}>
               {selected?.name ?? "No course"}
@@ -67,8 +72,9 @@ export function AppHeader() {
           </T>
         </Pressable>
       </View>
-      <Modal visible={coursesOpen} transparent animationType="slide" onRequestClose={() => setCoursesOpen(false)}>
-        <View style={backdrop}>
+      <Modal visible={coursesOpen} transparent animationType="fade" onRequestClose={() => setCoursesOpen(false)} statusBarTranslucent navigationBarTranslucent>
+        <View style={[sheetHost, { paddingBottom: aboveTabBar }]}>
+          <View style={backdrop}>
           <Pressable style={{ flex: 1 }} accessibilityLabel="Close courses" onPress={() => setCoursesOpen(false)} />
           <View testID="course-picker" style={sheet}>
             <View style={handle} />
@@ -100,10 +106,12 @@ export function AppHeader() {
               })}
             </ScrollView>
           </View>
+          </View>
         </View>
       </Modal>
-      <Modal visible={profileOpen} transparent animationType="slide" onRequestClose={() => setProfileOpen(false)}>
-        <View style={backdrop}>
+      <Modal visible={profileOpen} transparent animationType="fade" onRequestClose={() => setProfileOpen(false)} statusBarTranslucent navigationBarTranslucent>
+        <View style={[sheetHost, { paddingBottom: aboveTabBar }]}>
+          <View style={backdrop}>
           <Pressable style={{ flex: 1 }} accessibilityLabel="Close profile" onPress={() => setProfileOpen(false)} />
           <View testID="profile-sheet" style={sheet}>
             <View style={handle} />
@@ -125,6 +133,7 @@ export function AppHeader() {
                 }}
               />
             ) : null}
+          </View>
           </View>
         </View>
       </Modal>
@@ -161,7 +170,7 @@ function ProfileBody({
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const version = Constants.expoConfig?.version ?? "1.1.3";
+  const version = Constants.expoConfig?.version ?? "1.1.4";
 
   useEffect(() => {
     let mounted = true;
@@ -267,6 +276,15 @@ const courseButton = {
   gap: 1,
 };
 
+const courseMenu = {
+  flexDirection: "row" as const,
+  alignItems: "center" as const,
+  gap: 4,
+  maxWidth: "100%" as const,
+  outlineWidth: 0,
+  outlineStyle: "solid" as const,
+};
+
 const avatar = {
   width: 40,
   height: 40,
@@ -283,6 +301,10 @@ const avatarLarge = {
   backgroundColor: colors.accentSoft,
   alignItems: "center" as const,
   justifyContent: "center" as const,
+};
+
+const sheetHost = {
+  flex: 1,
 };
 
 const backdrop = {
