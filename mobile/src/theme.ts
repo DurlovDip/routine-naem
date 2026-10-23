@@ -16,6 +16,11 @@ export const colors = {
   danger: "#8f3d3d",
   dangerBg: "#f8ecec",
   shadow: "#1c1c1a",
+  /** Unselected day before today. */
+  chipPast: "#d9d6ce",
+  chipPastText: "#5a5a54",
+  /** Unselected today or later, and days with no date. */
+  chipOpenBorder: "#ddd9d0",
 };
 
 export const space = {

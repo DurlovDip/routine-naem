@@ -64,6 +64,30 @@ export function isIsoDate(value: string): boolean {
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 }
 
+/** Calendar date in Asia/Dhaka, YYYY-MM-DD. */
+export function todayInDhaka(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+  return `${year}-${month}-${day}`;
+}
+
+export type DayWhen = "past" | "today" | "future" | "undated";
+
+/** Past, today, or future against a YYYY-MM-DD today. A missing or invalid date is undated. */
+export function dayWhen(iso: string, today: string): DayWhen {
+  if (!isIsoDate(iso) || !isIsoDate(today)) return "undated";
+  if (iso < today) return "past";
+  if (iso > today) return "future";
+  return "today";
+}
+
 export function isClock(value: string): boolean {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }

@@ -6,11 +6,11 @@ import { useAccess } from "../../../src/auth";
 import { useCourses } from "../../../src/courses";
 import { buildTimeline, cellHasConflict, findConflicts, maxSpanFrom, rowCells, type SheetSession } from "../../../src/lib/schedule";
 import { cleanBatchNumber, formatModuleCode, orderedManagers, parseModuleCode, rosterRange, sessionSpanLabel } from "../../../src/lib/text";
-import { addDays, formatDayNumber, formatRange, formatSlashDate, isIsoDate, weekdayName } from "../../../src/lib/time";
+import { addDays, dayWhen, formatDayNumber, formatRange, formatSlashDate, isIsoDate, todayInDhaka, weekdayName } from "../../../src/lib/time";
 import type { Batch, CellContent, DayPlan } from "../../../src/lib/types";
 import { useSchedule } from "../../../src/store";
 import { card, colors, radius, space } from "../../../src/theme";
-import { Button, CheckRow, Field, Label, Select, T } from "../../../src/ui";
+import { Button, CheckRow, DayChip, Field, Label, Select, T } from "../../../src/ui";
 
 export default function EditorScreen() {
   const access = useAccess();
@@ -76,18 +76,15 @@ export default function EditorScreen() {
         <Ionicons name="chevron-forward" size={18} color={colors.muted} />
       </Pressable>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, alignItems: "center" }}>
-        {state.days.map((item) => {
-          const on = item.id === day.id;
-          return (
-            <Button
-              key={item.id}
-              small
-              tone={on ? "primary" : "ghost"}
-              label={`${formatDayNumber(item.dayNumber).replace("Day – ", "Day ")}  ${formatSlashDate(item.date)}`}
-              onPress={() => dispatch({ type: "set-active-day", id: item.id })}
-            />
-          );
-        })}
+        {state.days.map((item) => (
+          <DayChip
+            key={item.id}
+            selected={item.id === day.id}
+            when={dayWhen(item.date, todayInDhaka())}
+            label={formatDayNumber(item.dayNumber).replace("Day – ", "Day ")}
+            onPress={() => dispatch({ type: "set-active-day", id: item.id })}
+          />
+        ))}
         <Button
           small
           tone={showDaySettings ? "primary" : "ghost"}

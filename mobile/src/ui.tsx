@@ -12,6 +12,7 @@ import {
   type TextProps,
   type TextStyle,
 } from "react-native";
+import type { DayWhen } from "./lib/time";
 import { colors, font, radius, shadow, space, type as typeScale, type FontWeight } from "./theme";
 
 let fontsReady = false;
@@ -92,6 +93,36 @@ export function Button({
           {label}
         </T>
       ) : null}
+    </Pressable>
+  );
+}
+
+export function DayChip({
+  label,
+  selected,
+  when,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  when: DayWhen;
+  onPress: () => void;
+}) {
+  const palette = selected
+    ? { backgroundColor: colors.accent, color: "#fff", borderColor: colors.accent }
+    : when === "past"
+      ? { backgroundColor: colors.chipPast, color: colors.chipPastText, borderColor: colors.chipPast }
+      : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.chipOpenBorder };
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={[styles.button, styles.buttonSmall, { backgroundColor: palette.backgroundColor, borderWidth: 1, borderColor: palette.borderColor }]}
+    >
+      <T weight="semibold" numberOfLines={1} style={{ fontSize: 12, color: palette.color }}>
+        {label}
+      </T>
     </Pressable>
   );
 }

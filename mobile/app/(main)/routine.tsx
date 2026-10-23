@@ -5,11 +5,11 @@ import { ScrollView, View } from "react-native";
 import { useAccess } from "../../src/auth";
 import { buildTimeline, rowCells, type SheetCell } from "../../src/lib/schedule";
 import { batchLines, cleanBatchNumber, formatModule, joinWithAnd, orderedManagers, sessionSpanLabel } from "../../src/lib/text";
-import { formatDayNumber, formatRange, formatSlashDate, weekdayName } from "../../src/lib/time";
+import { dayWhen, formatDayNumber, formatRange, formatSlashDate, todayInDhaka, weekdayName } from "../../src/lib/time";
 import { downloadRoutine } from "../../src/pdf";
 import { useSchedule } from "../../src/store";
 import { card, colors, radius, space, type } from "../../src/theme";
-import { Button, Segmented, T } from "../../src/ui";
+import { Button, DayChip, Segmented, T } from "../../src/ui";
 
 type ViewMode = "list" | "table";
 
@@ -29,18 +29,15 @@ export default function RoutineScreen() {
     <View style={{ flex: 1, backgroundColor: colors.desk }}>
       <View style={{ paddingTop: space.md, gap: space.md }}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm, paddingHorizontal: space.lg, alignItems: "center" }}>
-          {state.days.map((item) => {
-            const on = item.id === day.id;
-            return (
-              <Button
-                key={item.id}
-                small
-                tone={on ? "primary" : "ghost"}
-                label={`${formatDayNumber(item.dayNumber).replace("Day – ", "Day ")}  ${formatSlashDate(item.date)}`}
-                onPress={() => dispatch({ type: "set-active-day", id: item.id })}
-              />
-            );
-          })}
+          {state.days.map((item) => (
+            <DayChip
+              key={item.id}
+              selected={item.id === day.id}
+              when={dayWhen(item.date, todayInDhaka())}
+              label={formatDayNumber(item.dayNumber).replace("Day – ", "Day ")}
+              onPress={() => dispatch({ type: "set-active-day", id: item.id })}
+            />
+          ))}
           {access.canEdit ? (
             <Button
               small
