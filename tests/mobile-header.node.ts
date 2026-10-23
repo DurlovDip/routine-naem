@@ -139,9 +139,10 @@ describe("routine header editing", () => {
     assert.match(headerEditor, /type: "set-header-line"/);
     assert.match(headerEditor, /type: "add-header-line"/);
     const routine = readFileSync(new URL("../mobile/app/(main)/routine.tsx", import.meta.url), "utf8");
-    assert.match(routine, /testID="routine-banner"/);
-    assert.doesNotMatch(routine, /routineCourseLabel\(/);
-    assert.match(routine, /routineCoordinatorLabel\(state\.footer\.name/);
+    assert.doesNotMatch(routine, /routine-banner|routineCourseLabel\(|routineCoordinatorLabel\(/);
+    const appHeader = readFileSync(new URL("../mobile/src/AppHeader.tsx", import.meta.url), "utf8");
+    assert.match(appHeader, /routineCoordinatorLabel\(state\.footer\.name/);
+    assert.match(appHeader, /testID="course-menu"/);
     assert.match(routine, /formatSlashDate\(day\.date\)/);
     assert.match(routine, /downloadRoutine\(state, day\)/);
     assert.doesNotMatch(routine, /chevron-up|chevron-down|SignatureBlock|RoutineHeader/);

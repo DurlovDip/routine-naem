@@ -2,8 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
-import { useAccess, useAuth } from "../../src/auth";
-import { routineCoordinatorLabel } from "../../src/lib/header";
+import { useAccess } from "../../src/auth";
 import { buildTimeline, rowCells, type SheetCell } from "../../src/lib/schedule";
 import { batchLines, cleanBatchNumber, formatModule, joinWithAnd, orderedManagers, sessionSpanLabel } from "../../src/lib/text";
 import { formatDayNumber, formatRange, formatSlashDate, weekdayName } from "../../src/lib/time";
@@ -17,13 +16,7 @@ type ViewMode = "list" | "table";
 export default function RoutineScreen() {
   const router = useRouter();
   const access = useAccess();
-  const auth = useAuth();
   const { state, dispatch, day, hydrated } = useSchedule();
-  const assignedCoordinator =
-    auth.session && (auth.session.role === "coordinator" || auth.session.role === "temp_coordinator")
-      ? auth.session.teacherName
-      : "";
-  const coordinator = routineCoordinatorLabel(state.footer.name, assignedCoordinator);
   const [mode, setMode] = useState<ViewMode>("list");
   const timeline = buildTimeline(day);
   const rows = state.batches.map((batch) => ({
@@ -59,13 +52,6 @@ export default function RoutineScreen() {
           ) : null}
         </ScrollView>
         <View style={{ paddingHorizontal: space.lg, gap: space.sm }}>
-          {coordinator ? (
-            <View testID="routine-banner">
-              <T numberOfLines={1} style={{ color: colors.muted, fontSize: type.caption, lineHeight: 16 }}>
-                {coordinator}
-              </T>
-            </View>
-          ) : null}
           <T style={{ color: colors.muted, fontSize: type.caption }}>
             {formatSlashDate(day.date)}
             {weekdayName(day.date) ? ` · ${weekdayName(day.date)}` : ""} · {formatDayNumber(day.dayNumber)}

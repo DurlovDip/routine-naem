@@ -9,6 +9,7 @@ import { useCourses } from "./courses";
 import { courseStatusLabel, type CourseStatus } from "./lib/courses";
 import { designationChoices } from "./lib/designations";
 import { roleLabel } from "./lib/roles";
+import { routineCoordinatorLabel } from "./lib/header";
 import { useSchedule } from "./store";
 import { colors, radius, shadow, space, type } from "./theme";
 import { Button, Select, T } from "./ui";
@@ -36,6 +37,9 @@ export function AppHeader() {
   const [pinOpen, setPinOpen] = useState(false);
   const session = auth.session;
   const selected = courses.selected;
+  const assignedCoordinator =
+    session && (session.role === "coordinator" || session.role === "temp_coordinator") ? session.teacherName : "";
+  const coordinator = routineCoordinatorLabel(state.footer.name, assignedCoordinator);
 
   return (
     <View style={bar}>
@@ -43,14 +47,21 @@ export function AppHeader() {
         <Pressable
           testID="course-menu"
           accessibilityRole="button"
-          accessibilityLabel={selected ? `Course ${selected.name}` : "Choose a course"}
+          accessibilityLabel={selected ? `Course ${selected.name}${coordinator ? `, ${coordinator}` : ""}` : "Choose a course"}
           onPress={() => setCoursesOpen(true)}
           style={courseMenu}
         >
-          <T weight="bold" numberOfLines={1} style={{ fontSize: type.title, flexShrink: 1 }}>
-            {selected?.name ?? "No course"}
-          </T>
-          <Ionicons name="chevron-down" size={16} color={colors.ink} />
+          <View style={titleRow}>
+            <T weight="bold" numberOfLines={1} style={titleText}>
+              {selected?.name ?? "No course"}
+            </T>
+            <Ionicons name="chevron-down" size={16} color={colors.ink} />
+          </View>
+          {coordinator ? (
+            <T numberOfLines={1} style={coordinatorLine}>
+              {coordinator}
+            </T>
+          ) : null}
         </Pressable>
         <Pressable
           testID="profile-button"
@@ -155,7 +166,7 @@ function ProfileBody({
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const version = Constants.expoConfig?.version ?? "1.1.5";
+  const version = Constants.expoConfig?.version ?? "1.1.6";
 
   useEffect(() => {
     let mounted = true;
@@ -252,18 +263,33 @@ const bar = {
   backgroundColor: colors.surface,
   paddingHorizontal: space.lg,
   paddingVertical: space.sm,
-  minHeight: 52,
   justifyContent: "center" as const,
 };
 
 const courseMenu = {
   flex: 1,
+  justifyContent: "center" as const,
+  minHeight: 44,
+  gap: 1,
+  outlineWidth: 0,
+  outlineStyle: "solid" as const,
+};
+
+const titleRow = {
   flexDirection: "row" as const,
   alignItems: "center" as const,
   gap: 4,
-  minHeight: 44,
-  outlineWidth: 0,
-  outlineStyle: "solid" as const,
+};
+
+const titleText = {
+  flexShrink: 1,
+  fontSize: type.title,
+};
+
+const coordinatorLine = {
+  color: colors.muted,
+  fontSize: type.caption,
+  lineHeight: 16,
 };
 
 const profileButton = {
