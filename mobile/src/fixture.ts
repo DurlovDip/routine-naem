@@ -30,12 +30,12 @@ export function createScreenshotState(): AppState {
     "batch-11": ["03", "04"],
   };
   day.cells = {
-    "batch-9:s1": { code: "M- 7.04", note: "", teachers: ["Prof. Asisul"] },
+    "batch-9:s1": { code: "M- 7.04", note: "", teachers: ["Dr. Litan Kanti Halder", "Prof. Asisul"] },
     "batch-9:s2": { code: "M- 8.01", note: "", teachers: ["Md. Sazzad Ali", "Muhammad Yeakub Ali"] },
     "batch-10:s1": { code: "M- 7.02", note: "", teachers: ["Mst. Arifa Tazrimin"] },
-    "batch-10:s4": { code: "M- 9.05", note: "", teachers: ["Muhammad Yeakub Ali"] },
+    "batch-10:s4": { code: "M- 9.05", note: "", teachers: ["Dr. Litan Kanti Halder", "Muhammad Yeakub Ali"] },
     "batch-11:s1": { code: "M- 8.04", note: "", teachers: ["Prof. Asisul"] },
-    "batch-11:s3": { code: "M- 7.04", note: "", teachers: ["Md. Sazzad Ali"] },
+    "batch-11:s3": { code: "M- 7.04", note: "", teachers: ["Dr. Litan Kanti Halder", "Md. Sazzad Ali"] },
   };
   day.merges = [{ batchId: "batch-9", sessionIds: ["s2", "s3"] }];
 
@@ -65,6 +65,7 @@ export function createScreenshotState(): AppState {
       roster: rosterRange(1, 40),
     })),
     teachers: [
+      { id: "screenshot", name: "Dr. Litan Kanti Halder", designation: "Assistant Director" },
       { id: "teacher-1", name: "Prof. Asisul", designation: "Professor" },
       { id: "teacher-2", name: "Md. Sazzad Ali", designation: "Associate Professor" },
       { id: "teacher-3", name: "Muhammad Yeakub Ali", designation: "Assistant Professor" },

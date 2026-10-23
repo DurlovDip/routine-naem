@@ -48,6 +48,7 @@ export function Button({
   tone = "ghost",
   disabled,
   small,
+  square,
   testID,
   accessibilityLabel,
 }: {
@@ -57,6 +58,8 @@ export function Button({
   tone?: "primary" | "ghost" | "danger" | "quiet";
   disabled?: boolean;
   small?: boolean;
+  /** Icon-only control with a 44px touch target. */
+  square?: boolean;
   testID?: string;
   accessibilityLabel?: string;
 }) {
@@ -70,6 +73,7 @@ export function Button({
       style={[
         styles.button,
         small && styles.buttonSmall,
+        square && styles.buttonSquare,
         tone === "primary" && styles.primary,
         tone === "ghost" && styles.ghost,
         tone === "danger" && styles.danger,
@@ -284,6 +288,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   buttonSmall: { paddingHorizontal: space.md, paddingVertical: space.sm, minHeight: 36 },
+  buttonSquare: { width: 44, height: 44, minHeight: 44, paddingHorizontal: 0, paddingVertical: 0 },
   buttonText: { fontSize: typeScale.label },
   primary: { backgroundColor: colors.accent },
   ghost: { backgroundColor: colors.paper },

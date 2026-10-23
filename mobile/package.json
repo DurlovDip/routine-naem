@@ -38,7 +38,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --import ../tests/register-ts.mjs --test ../tests/mobile-header.node.ts ../tests/mobile-signature.node.ts ../tests/mobile-courses.node.ts ../tests/mobile-days.node.ts"
+    "test": "node --experimental-strip-types --import ../tests/register-ts.mjs --test ../tests/mobile-header.node.ts ../tests/mobile-signature.node.ts ../tests/mobile-courses.node.ts ../tests/mobile-days.node.ts ../tests/mobile-mine.node.ts"
   },
   "private": true
 }
