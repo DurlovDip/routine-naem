@@ -2,12 +2,18 @@ export const BUILTIN_DESIGNATIONS = [
   "Director General",
   "Director",
   "Deputy Director",
+  "Deputy Director (TS)",
   "Assistant Director",
+  "Assistant Director (TS)",
+  "Training Specialist",
   "Professor",
   "Associate Professor",
   "Assistant Professor",
   "Lecturer",
   "Research Officer",
+  "Technical Officer",
+  "Documentation Officer",
+  "Physical Instructor",
   "Guest Speaker",
 ] as const;
 

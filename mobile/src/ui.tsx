@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useState, type ReactNode } from "react";
 import {
   FlatList,
@@ -106,23 +107,87 @@ export function DayChip({
   selected,
   when,
   onPress,
+  onEdit,
 }: {
   label: string;
   selected: boolean;
   when: DayWhen;
   onPress: () => void;
+  onEdit?: () => void;
 }) {
   const palette = selected
     ? { backgroundColor: colors.accent, color: "#fff", borderColor: colors.accent }
     : when === "past"
       ? { backgroundColor: colors.chipPast, color: colors.chipPastText, borderColor: colors.chipPast }
       : { backgroundColor: colors.surface, color: colors.ink, borderColor: colors.chipOpenBorder };
+
+  if (selected && onEdit) {
+    return (
+      <View
+        style={[
+          styles.button,
+          styles.buttonSmall,
+          {
+            backgroundColor: palette.backgroundColor,
+            borderWidth: 1,
+            borderColor: palette.borderColor,
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 0,
+            paddingVertical: 0,
+            overflow: "hidden",
+          },
+        ]}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ selected: true }}
+          accessibilityLabel={`Day ${label}`}
+          onPress={onPress}
+          style={({ pressed }) => [
+            chipLabelBtn,
+            { opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <T weight="semibold" numberOfLines={1} style={{ fontSize: 12, color: palette.color }}>
+            {label}
+          </T>
+        </Pressable>
+        <View style={chipDivider} />
+        <Pressable
+          testID="edit-day-chip"
+          accessibilityRole="button"
+          accessibilityLabel="Edit day info"
+          hitSlop={8}
+          onPress={onEdit}
+          style={({ pressed }) => [
+            chipEditBtn,
+            { opacity: pressed ? 0.6 : 1 },
+          ]}
+        >
+          <Ionicons name="pencil" size={12} color="#fff" />
+        </Pressable>
+      </View>
+    );
+  }
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected }}
       onPress={onPress}
-      style={[styles.button, styles.buttonSmall, { backgroundColor: palette.backgroundColor, borderWidth: 1, borderColor: palette.borderColor }]}
+      style={[
+        styles.button,
+        styles.buttonSmall,
+        {
+          backgroundColor: palette.backgroundColor,
+          borderWidth: 1,
+          borderColor: palette.borderColor,
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 12,
+        },
+      ]}
     >
       <T weight="semibold" numberOfLines={1} style={{ fontSize: 12, color: palette.color }}>
         {label}
@@ -130,6 +195,123 @@ export function DayChip({
     </Pressable>
   );
 }
+
+export function BatchChip({
+  label,
+  selected,
+  onPress,
+  onEdit,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  onEdit?: () => void;
+}) {
+  if (selected && onEdit) {
+    return (
+      <View
+        style={[
+          styles.button,
+          styles.buttonSmall,
+          styles.primary,
+          {
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: 0,
+            paddingVertical: 0,
+            overflow: "hidden",
+          },
+        ]}
+      >
+        <Pressable
+          testID={`batch-chip-${label}`}
+          accessibilityRole="button"
+          accessibilityState={{ selected: true }}
+          accessibilityLabel={`Batch ${label}`}
+          onPress={onPress}
+          style={({ pressed }) => [
+            chipLabelBtn,
+            { opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <T
+            weight="semibold"
+            numberOfLines={1}
+            style={[styles.buttonText, { fontSize: 12, color: "#fff" }]}
+          >
+            {label}
+          </T>
+        </Pressable>
+        <View style={chipDivider} />
+        <Pressable
+          testID="edit-batch-chip"
+          accessibilityRole="button"
+          accessibilityLabel="Edit batch info"
+          hitSlop={8}
+          onPress={onEdit}
+          style={({ pressed }) => [
+            chipEditBtn,
+            { opacity: pressed ? 0.6 : 1 },
+          ]}
+        >
+          <Ionicons name="pencil" size={12} color="#fff" />
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <Pressable
+      testID={`batch-chip-${label}`}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={[
+        styles.button,
+        styles.buttonSmall,
+        selected ? styles.primary : styles.ghost,
+        {
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 12,
+        },
+      ]}
+    >
+      <T
+        weight="semibold"
+        numberOfLines={1}
+        style={[
+          styles.buttonText,
+          { fontSize: 12, color: selected ? "#fff" : colors.ink },
+        ]}
+      >
+        {label}
+      </T>
+    </Pressable>
+  );
+}
+
+const chipLabelBtn = {
+  height: 36,
+  paddingLeft: 12,
+  paddingRight: 8,
+  alignItems: "center" as const,
+  justifyContent: "center" as const,
+};
+
+const chipDivider = {
+  width: 1,
+  height: 16,
+  backgroundColor: "rgba(255, 255, 255, 0.4)",
+};
+
+const chipEditBtn = {
+  height: 36,
+  paddingLeft: 8,
+  paddingRight: 11,
+  alignItems: "center" as const,
+  justifyContent: "center" as const,
+};
 
 export function Segmented<T extends string>({
   value,
@@ -213,7 +395,8 @@ export function Select({
   allowEmpty?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const unique = options.filter((option, index) => options.indexOf(option) === index);
+  const clean = options.map((opt) => (typeof opt === "string" ? opt.trim() : "")).filter(Boolean);
+  const unique = clean.filter((option, index) => clean.indexOf(option) === index);
   const rows = allowEmpty ? ["", ...unique] : unique;
   return (
     <>

@@ -1,7 +1,9 @@
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import Constants from "expo-constants";
-import { useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, View } from "react-native";
+import { createElement, useEffect, useRef, useState } from "react";
+import { Alert, Image, Modal, Platform, Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "./auth";
 import { ChangePinModal } from "./ChangePin";
@@ -10,6 +12,7 @@ import { courseStatusLabel, type CourseStatus } from "./lib/courses";
 import { designationChoices } from "./lib/designations";
 import { roleLabel } from "./lib/roles";
 import { routineCoordinatorLabel } from "./lib/header";
+import { readSignatureFile, readSignatureUri } from "./lib/signature";
 import { useSchedule } from "./store";
 import { colors, radius, shadow, space, type } from "./theme";
 import { Button, Select, T } from "./ui";
@@ -39,7 +42,9 @@ export function AppHeader() {
   const selected = courses.selected;
   const assignedCoordinator =
     session && (session.role === "coordinator" || session.role === "temp_coordinator") ? session.teacherName : "";
-  const coordinator = routineCoordinatorLabel(state.footer.name, assignedCoordinator);
+  const selectedCoordinators =
+    (courses.selectedCoordinators?.length ? courses.selectedCoordinators : state.footer.coordinators) ?? [];
+  const coordinator = routineCoordinatorLabel(state.footer.name, assignedCoordinator, selectedCoordinators);
 
   return (
     <View style={bar}>
@@ -161,12 +166,16 @@ function ProfileBody({
   onSaved: (value: string) => void;
 }) {
   const auth = useAuth();
+  const { dispatch } = useSchedule();
   const [designation, setDesignation] = useState("");
+  const [signature, setSignature] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const version = Constants.expoConfig?.version ?? "1.1.9";
+  const [busySig, setBusySig] = useState(false);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const version = Constants.expoConfig?.version ?? "1.2.0";
 
   useEffect(() => {
     let mounted = true;
@@ -181,10 +190,101 @@ function ProfileBody({
         setError(err instanceof Error ? err.message : String(err));
       },
     );
+    void auth.loadSignature().then((sig) => {
+      if (!mounted) return;
+      setSignature(sig);
+    });
     return () => {
       mounted = false;
     };
   }, [auth, teacherId]);
+
+  async function storeSignature(sig: string) {
+    setBusySig(true);
+    try {
+      await auth.saveSignature(sig);
+      setSignature(sig);
+      dispatch({ type: "set-footer", patch: { signature: sig } });
+    } catch {
+      Alert.alert("Error saving signature", "Could not save your signature.");
+    } finally {
+      setBusySig(false);
+    }
+  }
+
+  async function removeSignature() {
+    setBusySig(true);
+    try {
+      await auth.saveSignature(null);
+      setSignature(null);
+      dispatch({ type: "set-footer", patch: { signature: null } });
+    } finally {
+      setBusySig(false);
+    }
+  }
+
+  async function fromFile(file: Blob | undefined) {
+    if (!file) return;
+    setBusySig(true);
+    try {
+      await storeSignature(await readSignatureFile(file));
+    } catch {
+      Alert.alert("Could not read that image", "Choose a PNG or JPEG signature.");
+    } finally {
+      setBusySig(false);
+    }
+  }
+
+  async function fromUri(uri: string, size?: { width?: number; height?: number }) {
+    setBusySig(true);
+    try {
+      await storeSignature(await readSignatureUri(uri, size));
+    } catch {
+      Alert.alert("Could not read that image", "Choose a PNG or JPEG signature.");
+    } finally {
+      setBusySig(false);
+    }
+  }
+
+  async function pickLibrary() {
+    const picked = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 1,
+      legacy: true,
+    });
+    if (picked.canceled) return;
+    const asset = picked.assets[0];
+    if (!asset) return;
+    await fromUri(asset.uri, { width: asset.width, height: asset.height });
+  }
+
+  async function pickFiles() {
+    const picked = await DocumentPicker.getDocumentAsync({
+      type: "image/*",
+      copyToCacheDirectory: true,
+      multiple: false,
+    });
+    if (picked.canceled) return;
+    const asset = picked.assets[0];
+    if (!asset) return;
+    if (asset.file) {
+      await fromFile(asset.file);
+      return;
+    }
+    await fromUri(asset.uri);
+  }
+
+  function uploadSignature() {
+    if (Platform.OS === "web") {
+      fileRef.current?.click();
+      return;
+    }
+    Alert.alert("Upload signature", "Choose a photo from the gallery or a file.", [
+      { text: "Photo library", onPress: () => void pickLibrary() },
+      { text: "Files", onPress: () => void pickFiles() },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }
 
   return (
     <View style={{ gap: space.md }}>
@@ -237,6 +337,59 @@ function ProfileBody({
           </View>
         )}
       </View>
+
+      <View style={{ gap: space.xs }}>
+        <T style={{ color: colors.muted, fontSize: type.caption }}>Signature</T>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+          <View style={signaturePreview}>
+            {signature ? (
+              <Image
+                source={{ uri: signature }}
+                accessibilityIgnoresInvertColors
+                style={{ width: "100%", height: 50 }}
+                resizeMode="contain"
+              />
+            ) : (
+              <T style={{ color: "#a8a29e", fontSize: 12 }}>No signature</T>
+            )}
+          </View>
+          <View style={{ gap: 8, alignItems: "flex-start" }}>
+            <Button
+              small
+              label={busySig ? "Reading…" : "Upload signature"}
+              disabled={busySig}
+              onPress={uploadSignature}
+            />
+            {signature ? (
+              <Button
+                small
+                tone="quiet"
+                label="Remove"
+                onPress={removeSignature}
+              />
+            ) : null}
+          </View>
+        </View>
+        <T style={{ color: colors.muted, fontSize: 11 }}>
+          Your signature appears automatically on routine footers and exported PDFs.
+        </T>
+      </View>
+
+      {Platform.OS === "web"
+        ? createElement("input", {
+            ref: fileRef,
+            type: "file",
+            accept: "image/*",
+            style: { display: "none" },
+            onChange: (event: Event) => {
+              const input = event.target as HTMLInputElement;
+              const file = input.files?.[0];
+              input.value = "";
+              void fromFile(file);
+            },
+          })
+        : null}
+
       {error ? <T style={{ color: colors.danger }}>{error}</T> : null}
       <Button label="Change PIN" icon={<Ionicons name="key-outline" size={16} color={colors.ink} />} onPress={onChangePin} />
       <Button label="Sign out" tone="danger" icon={<Ionicons name="log-out-outline" size={16} color={colors.danger} />} onPress={onSignOut} />
@@ -354,4 +507,17 @@ const courseRow = {
   paddingVertical: space.md,
   paddingHorizontal: space.sm,
   borderRadius: radius.md,
+};
+
+const signaturePreview = {
+  height: 64,
+  width: 140,
+  borderWidth: 1,
+  borderStyle: "dashed" as const,
+  borderColor: "#ddd4c6",
+  borderRadius: 6,
+  backgroundColor: "#fff",
+  alignItems: "center" as const,
+  justifyContent: "center" as const,
+  overflow: "hidden" as const,
 };

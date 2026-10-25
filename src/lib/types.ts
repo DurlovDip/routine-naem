@@ -82,6 +82,9 @@ export type DayPlan = {
   managers: Record<string, string[]>;
   cells: Record<string, CellContent>;
   merges: Merge[];
+  isPublished?: boolean;
+  publishedAt?: string;
+  publishedSnapshot?: DayPlan;
 };
 
 export type Footer = {
@@ -92,6 +95,7 @@ export type Footer = {
   isCourseCoordinator?: boolean;
   courseName?: string;
   lines: string[];
+  coordinators?: string[];
 };
 
 export type AppState = {
@@ -108,6 +112,8 @@ export type AppState = {
   autoRotate: boolean;
   showConflicts: boolean;
   footer: Footer;
+  isPublished?: boolean;
+  publishedAt?: string;
 };
 
 export type CellSelection = {

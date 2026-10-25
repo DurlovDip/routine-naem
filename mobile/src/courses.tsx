@@ -25,6 +25,8 @@ type CourseApi = {
   reload: () => Promise<void>;
   createCourse: (draft: CourseDraft) => Promise<string | null>;
   updateCourse: (id: string, draft: CourseDraft) => Promise<string | null>;
+  coordinators: Record<string, string[]>;
+  selectedCoordinators: string[];
 };
 
 const CourseContext = createContext<CourseApi | null>(null);
@@ -45,7 +47,48 @@ export function CourseProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const [coordinators, setCoordinators] = useState<Record<string, string[]>>(() =>
+    screenshotMode
+      ? {
+          "course-acsd": ["Dr. Litan Kanti Halder", "Md. Sazzad Ali"],
+          "course-foundation": ["Dr. Litan Kanti Halder"],
+        }
+      : ({} as Record<string, string[]>),
+  );
+
+  const reloadCoordinators = useCallback(async () => {
+    if (screenshotMode) {
+      setCoordinators({
+        "course-acsd": ["Dr. Litan Kanti Halder", "Md. Sazzad Ali"],
+        "course-foundation": ["Dr. Litan Kanti Halder"],
+      });
+      return;
+    }
+    if (!auth.ready || !auth.session) {
+      setCoordinators({});
+      return;
+    }
+    try {
+      const [t, a] = await Promise.all([auth.directory(), auth.courseAssignments()]);
+      const map: Record<string, string[]> = {};
+      for (const item of a) {
+        if (item.role === "coordinator" || item.role === "temp_coordinator") {
+          const teacher = t.find((row) => row.teacherId === item.teacherId);
+          const name = teacher?.teacherName || item.teacherId;
+          if (!map[item.courseId]) map[item.courseId] = [];
+          if (!map[item.courseId].includes(name)) {
+            map[item.courseId].push(name);
+          }
+        }
+      }
+      setCoordinators(map);
+    } catch {
+      // best-effort for non-super admins or offline
+    }
+  }, [auth]);
+
   const reload = useCallback(async () => {
+    void reloadCoordinators();
     if (screenshotMode) {
       setCourses(screenshotCourses(auth.session?.role ?? "coordinator"));
       setReady(true);
@@ -58,29 +101,41 @@ export function CourseProvider({ children }: { children: ReactNode }) {
       setReady(true);
       return;
     }
-    const { data, error: rpcError } = await supabase.rpc("my_courses");
-    if (rpcError) {
-      if (missingCoursesRpc(rpcError.message)) {
-        setCourses([legacyCourse(canEditSchedule(auth.session.role))]);
-        setError(null);
-      } else {
-        setCourses([]);
-        setError(rpcError.message);
+    try {
+      const { data, error: rpcError } = await supabase.rpc("my_courses");
+      if (rpcError) {
+        if (missingCoursesRpc(rpcError.message)) {
+          setCourses([legacyCourse(canEditSchedule(auth.session.role))]);
+          setError(null);
+        } else {
+          setCourses([]);
+          setError(rpcError.message);
+        }
+        setReady(true);
+        return;
       }
+      const rows = Array.isArray(data) ? data : [];
+      setCourses(rows.map((row) => courseFromRow(row as Record<string, unknown>)).filter((row): row is CourseSummary => row !== null));
+      setError(null);
       setReady(true);
-      return;
+    } catch (err) {
+      console.warn("my_courses fetch failed:", err);
+      setCourses([legacyCourse(canEditSchedule(auth.session.role))]);
+      setError(err instanceof Error ? err.message : String(err));
+      setReady(true);
     }
-    const rows = Array.isArray(data) ? data : [];
-    setCourses(rows.map((row) => courseFromRow(row as Record<string, unknown>)).filter((row): row is CourseSummary => row !== null));
-    setError(null);
-    setReady(true);
-  }, [auth.ready, auth.session]);
+  }, [auth.ready, auth.session, reloadCoordinators]);
 
   useEffect(() => {
     void reload();
-  }, [reload]);
+    void reloadCoordinators();
+  }, [reload, reloadCoordinators]);
 
   const selected = useMemo(() => pickDefaultCourse(courses, preferredId), [courses, preferredId]);
+  const selectedCoordinators = useMemo(
+    () => (selected?.id ? coordinators[selected.id] ?? [] : []),
+    [selected?.id, coordinators],
+  );
 
   useEffect(() => {
     if (selected && !screenshotMode) void AsyncStorage.setItem(STORAGE_KEY, selected.id);
@@ -176,8 +231,30 @@ export function CourseProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<CourseApi>(
-    () => ({ courses, selected, ready, error, selectCourse, reload, createCourse, updateCourse }),
-    [courses, selected, ready, error, selectCourse, reload, createCourse, updateCourse],
+    () => ({
+      courses,
+      selected,
+      ready,
+      error,
+      selectCourse,
+      reload,
+      createCourse,
+      updateCourse,
+      coordinators,
+      selectedCoordinators,
+    }),
+    [
+      courses,
+      selected,
+      ready,
+      error,
+      selectCourse,
+      reload,
+      createCourse,
+      updateCourse,
+      coordinators,
+      selectedCoordinators,
+    ],
   );
 
   return <CourseContext.Provider value={value}>{children}</CourseContext.Provider>;

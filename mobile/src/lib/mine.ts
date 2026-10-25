@@ -1,6 +1,6 @@
 import { buildTimeline, rowCells } from "./schedule";
 import { batchLines, formatModule, sessionSpanLabel } from "./text";
-import { formatDayNumber } from "./time";
+import { addDays, dayWhen, formatDayNumber, formatSlashDate, todayInDhaka } from "./time";
 import type { Batch, DayPlan, Teacher } from "./types";
 
 export type MySession = {
@@ -11,6 +11,12 @@ export type MySession = {
   batchLabel: string;
   module: string;
   coTeachers: string[];
+};
+
+export type MineDayGroup = {
+  day: DayPlan;
+  header: string;
+  sessions: MySession[];
 };
 
 function sameTeacher(left: string, right: string): boolean {
@@ -60,6 +66,55 @@ export function mySessions(
   }
   items.sort((a, b) => a.start - b.start || a.end - b.end || a.batchLabel.localeCompare(b.batchLabel));
   return items;
+}
+
+export function formatMineDayHeader(day: DayPlan, today = todayInDhaka()): string {
+  const formattedDate = formatSlashDate(day.date);
+  const dayLabel = formatDayNumber(day.dayNumber).replace("Day – ", "Day ");
+  let prefix = dayLabel;
+  if (day.date && day.date === today) {
+    prefix = "Today";
+  } else if (day.date && day.date === addDays(today, 1)) {
+    prefix = "Tomorrow";
+  }
+  return formattedDate ? `${prefix} · ${formattedDate}` : prefix;
+}
+
+/**
+ * Groups upcoming sessions across all days from today onward in Asia/Dhaka, in chronological order.
+ */
+export function upcomingMineGroups(
+  batches: Batch[],
+  teachers: Teacher[],
+  days: DayPlan[],
+  teacherId: string,
+  fallbackName = "",
+  today = todayInDhaka(),
+): MineDayGroup[] {
+  const name = rosterTeacherName(teachers, teacherId) || fallbackName.trim();
+  if (!name) return [];
+
+  const upcomingDays = [...days]
+    .filter((d) => dayWhen(d.date, today) !== "past")
+    .sort((a, b) => {
+      if (a.date && b.date && a.date !== b.date) {
+        return a.date.localeCompare(b.date);
+      }
+      return a.dayNumber - b.dayNumber;
+    });
+
+  const groups: MineDayGroup[] = [];
+  for (const d of upcomingDays) {
+    const sessions = mySessions(batches, teachers, d, teacherId, fallbackName);
+    if (sessions.length > 0) {
+      groups.push({
+        day: d,
+        header: formatMineDayHeader(d, today),
+        sessions,
+      });
+    }
+  }
+  return groups;
 }
 
 export function mineEmptyLabel(dayNumber: number): string {

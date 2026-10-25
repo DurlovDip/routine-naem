@@ -15,7 +15,7 @@ import { useCourses } from "./courses";
 import { withCourseTitle } from "./lib/courses";
 import { createDemoState } from "./lib/demo";
 import { scheduleReducer, type Action } from "./lib/reducer";
-import { activeDay } from "./lib/schedule";
+import { activeDay, scheduleContentChanged } from "./lib/schedule";
 import { loadState, saveState } from "./lib/storage";
 import {
   isSupabaseConfigured,
@@ -173,10 +173,15 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     };
   }, [canRead, canWriteCatalog, target]);
 
+  const lastSavedContentRef = useRef<AppState>(state);
+
   useEffect(() => {
     if (!canWrite || !cloudReady.current) return;
     if (skipCloudSave.current) {
       skipCloudSave.current = false;
+      return;
+    }
+    if (!scheduleContentChanged(lastSavedContentRef.current, state)) {
       return;
     }
     const saving = targetRef.current;
@@ -189,6 +194,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     setSyncStatus("saving");
     const timer = window.setTimeout(async () => {
       if (targetRef.current?.scheduleId !== saving.scheduleId) return;
+      lastSavedContentRef.current = stateRef.current;
       const ok = await upsertRemoteSchedule(stateRef.current, {
         catalogs: canWriteCatalog,
         scheduleId: saving.scheduleId,
@@ -207,8 +213,15 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
 
   function applyRemote(next: AppState) {
     skipCloudSave.current = true;
-    dispatch({ type: "replace", state: next });
-    saveState(next);
+    const currentActiveDayId = stateRef.current.activeDayId;
+    const keepLocal = next.days.some((d) => d.id === currentActiveDayId);
+    const resolvedActiveDayId = keepLocal
+      ? currentActiveDayId
+      : (next.days.find((d) => d.id === next.activeDayId)?.id ?? next.days[0]?.id ?? next.activeDayId);
+    const merged = { ...next, activeDayId: resolvedActiveDayId };
+    lastSavedContentRef.current = merged;
+    dispatch({ type: "replace", state: merged });
+    saveState(merged);
   }
 
   const refreshFromCloud = useCallback(async () => {

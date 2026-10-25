@@ -139,8 +139,8 @@ export async function loadRemoteSchedule(
       baseState.subNumbers = catalog.subNumbers;
     }
 
-    // Merge relational batches
-    if (batchesRes.data && batchesRes.data.length > 0) {
+    // Fallback to relational batches only if schedule document has no batches
+    if (batchesRes.data && batchesRes.data.length > 0 && (!baseState.batches || baseState.batches.length === 0)) {
       baseState.batches = batchesRes.data.map((row: {
         id: number | string;
         name: string;
@@ -169,15 +169,9 @@ export async function fetchRemoteSchedule(): Promise<AppState | null> {
   return result.state;
 }
 
-async function deleteMissingTeachers(teachers: Teacher[]) {
-  if (!supabase || teachers.length === 0) return;
-  const { data: remoteRows, error } = await supabase.from(TEACHERS_TABLE).select("id");
-  if (error || !remoteRows) return;
-  const activeIds = new Set(teachers.map((t) => t.id));
-  const toDelete = remoteRows.map((r: { id: string }) => r.id).filter((id) => !activeIds.has(id));
-  if (toDelete.length > 0) {
-    await supabase.from(TEACHERS_TABLE).delete().in("id", toDelete);
-  }
+async function deleteMissingTeachers(_teachers: Teacher[]) {
+  // Institutional teachers are directory accounts managed via admin RPCs and must never be deleted by a routine save.
+  return;
 }
 
 async function deleteMissingModules(modules: ModuleEntry[]) {
@@ -209,22 +203,30 @@ async function deleteMissingBatches(batches: Batch[], courseId: string | null) {
 async function syncTeachers(teachers: Teacher[], timestamp: string) {
   if (!supabase || teachers.length === 0) return;
 
-  const rows = teachers.map((t) => ({
-    id: t.id,
-    name: t.name,
-    designation: t.designation || "",
-    updated_at: timestamp,
-  }));
-  const { error: upsertErr } = await supabase.from(TEACHERS_TABLE).upsert(rows, { onConflict: "id" }).select("id");
-  if (upsertErr && upsertErr.message.includes("designation")) {
-    const fallbackRows = teachers.map((t) => ({
+  try {
+    const rows = teachers.map((t) => ({
       id: t.id,
       name: t.name,
+      designation: t.designation || "",
       updated_at: timestamp,
     }));
-    await supabase.from(TEACHERS_TABLE).upsert(fallbackRows, { onConflict: "id" }).select("id");
+    const { error: upsertErr } = await supabase.from(TEACHERS_TABLE).upsert(rows, { onConflict: "id" }).select("id");
+    if (upsertErr) {
+      if (/permission denied|violates row-level security|policy/i.test(upsertErr.message)) {
+        return;
+      }
+      if (upsertErr.message.includes("designation")) {
+        const fallbackRows = teachers.map((t) => ({
+          id: t.id,
+          name: t.name,
+          updated_at: timestamp,
+        }));
+        await supabase.from(TEACHERS_TABLE).upsert(fallbackRows, { onConflict: "id" }).select("id");
+      }
+    }
+  } catch {
+    // Ignore catalog mirror issues on client save
   }
-  await deleteMissingTeachers(teachers);
 }
 
 async function syncModules(modules: ModuleEntry[], timestamp: string) {
@@ -277,7 +279,7 @@ export async function upsertRemoteSchedule(
   if (!supabase) return false;
   try {
     const now = new Date().toISOString();
-    const catalogs = options.catalogs !== false;
+    const catalogs = options.catalogs === true;
     const scheduleId = options.scheduleId ?? SCHEDULE_ROW_ID;
     const courseId = options.courseId ?? null;
 

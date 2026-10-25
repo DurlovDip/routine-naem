@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { screenshotMode } from "./flags";
 import type { CourseAssignment } from "./lib/courses";
 import { supabase } from "./lib/supabase";
@@ -21,6 +22,7 @@ export type SessionView = {
 export type DirectoryRow = {
   teacherId: string;
   teacherName: string;
+  designation?: string;
   username: string | null;
   storedRole: StoredRole;
   role: AppRole;
@@ -54,6 +56,8 @@ type AuthValue = {
   courseAssignments: () => Promise<CourseAssignment[]>;
   loadDesignation: () => Promise<string>;
   saveDesignation: (designation: string) => Promise<string | null>;
+  loadSignature: () => Promise<string | null>;
+  saveSignature: (signature: string | null) => Promise<string | null>;
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -78,36 +82,47 @@ function pinMigrationHint(message: string): string {
 }
 
 async function readSupabaseSession(): Promise<SessionView | null> {
-  const { data } = await supabase.auth.getSession();
-  const authSession = data.session;
-  if (!authSession) return null;
-  const [access, effective] = await Promise.all([supabase.rpc("my_access"), supabase.rpc("effective_role")]);
-  if (access.error) throw new Error(access.error.message);
-  const row = Array.isArray(access.data) ? access.data[0] : access.data;
-  if (!row) {
-    throw new Error("Signed in, but this teacher has no account row.");
+  try {
+    const { data } = await supabase.auth.getSession();
+    const authSession = data?.session;
+    if (!authSession) return null;
+    const [access, effective] = await Promise.all([
+      Promise.resolve(supabase.rpc("my_access")).catch((e: unknown) => ({ data: null, error: { message: e instanceof Error ? e.message : String(e) } })),
+      Promise.resolve(supabase.rpc("effective_role")).catch((e: unknown) => ({ data: null, error: { message: e instanceof Error ? e.message : String(e) } })),
+    ]);
+    if (access.error) {
+      console.warn("my_access error:", access.error.message);
+      return null;
+    }
+    const row = Array.isArray(access.data) ? access.data[0] : access.data;
+    if (!row) {
+      return null;
+    }
+    const record = row as {
+      username: string;
+      teacher_id: string;
+      teacher_name: string;
+      stored_role: string;
+      effective: string;
+      role_start: string | null;
+      role_end: string | null;
+    };
+    const rpcRole = !effective.error && typeof effective.data === "string" ? asRole(effective.data) : null;
+    return {
+      userId: authSession.user.id,
+      username: record.username,
+      email: authSession.user.email ?? syntheticEmail(record.username),
+      teacherId: record.teacher_id,
+      teacherName: record.teacher_name ?? record.teacher_id,
+      storedRole: asRole(record.stored_role),
+      role: rpcRole ?? asRole(record.effective),
+      roleStart: dateOrNull(record.role_start),
+      roleEnd: dateOrNull(record.role_end),
+    };
+  } catch (err) {
+    console.warn("readSupabaseSession network error:", err);
+    return null;
   }
-  const record = row as {
-    username: string;
-    teacher_id: string;
-    teacher_name: string;
-    stored_role: string;
-    effective: string;
-    role_start: string | null;
-    role_end: string | null;
-  };
-  const rpcRole = !effective.error && typeof effective.data === "string" ? asRole(effective.data) : null;
-  return {
-    userId: authSession.user.id,
-    username: record.username,
-    email: authSession.user.email ?? syntheticEmail(record.username),
-    teacherId: record.teacher_id,
-    teacherName: record.teacher_name ?? record.teacher_id,
-    storedRole: asRole(record.stored_role),
-    role: rpcRole ?? asRole(record.effective),
-    roleStart: dateOrNull(record.role_start),
-    roleEnd: dateOrNull(record.role_end),
-  };
 }
 
 function screenshotSession(): SessionView {
@@ -226,6 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
       teacherId: String(row.teacher_id),
       teacherName: String(row.teacher_name),
+      designation: row.designation ? String(row.designation) : "",
       username: row.username ? String(row.username) : null,
       storedRole: asRole(row.stored_role),
       role: asRole(row.effective),
@@ -309,9 +325,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const saveDesignation = useCallback(async (designation: string) => {
     if (screenshotMode) return null;
-    const { error } = await supabase.rpc("set_my_designation", { next_designation: designation.trim() });
-    return error ? error.message : null;
-  }, []);
+    const trimmed = designation.trim();
+    const { error } = await supabase.rpc("set_my_designation", { next_designation: trimmed });
+    if (!error) return null;
+    if (session?.teacherId) {
+      const { error: directError } = await supabase
+        .from("teachers")
+        .update({ designation: trimmed })
+        .eq("id", session.teacherId);
+      if (!directError) return null;
+    }
+    return error.message;
+  }, [session?.teacherId]);
+
+  const loadSignature = useCallback(async () => {
+    if (screenshotMode || !session?.teacherId) return null;
+    try {
+      const cached = await AsyncStorage.getItem(`@teacher_sig_${session.teacherId}`);
+      if (cached) return cached;
+    } catch {
+      // ignore
+    }
+    try {
+      const { data, error } = await supabase
+        .from("teachers")
+        .select("signature")
+        .eq("id", session.teacherId)
+        .maybeSingle();
+      if (!error && typeof data?.signature === "string" && data.signature) {
+        return data.signature;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }, [session?.teacherId]);
+
+  const saveSignature = useCallback(
+    async (signature: string | null) => {
+      if (screenshotMode) return null;
+      if (!session?.teacherId) return "Not signed in";
+      try {
+        if (signature) {
+          await AsyncStorage.setItem(`@teacher_sig_${session.teacherId}`, signature);
+        } else {
+          await AsyncStorage.removeItem(`@teacher_sig_${session.teacherId}`);
+        }
+      } catch {
+        // ignore
+      }
+      try {
+        await supabase
+          .from("teachers")
+          .update({ signature })
+          .eq("id", session.teacherId);
+      } catch {
+        // ignore
+      }
+      return null;
+    },
+    [session?.teacherId],
+  );
 
   const value = useMemo<AuthValue>(
     () => ({
@@ -329,8 +403,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       courseAssignments,
       loadDesignation,
       saveDesignation,
+      loadSignature,
+      saveSignature,
     }),
-    [ready, session, notice, signIn, changePin, adminResetPin, signOut, signInTeachers, directory, assignRole, assignCourseRole, courseAssignments, loadDesignation, saveDesignation],
+    [ready, session, notice, signIn, changePin, adminResetPin, signOut, signInTeachers, directory, assignRole, assignCourseRole, courseAssignments, loadDesignation, saveDesignation, loadSignature, saveSignature],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

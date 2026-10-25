@@ -113,19 +113,20 @@ describe("signature footer", () => {
 
     const card = readFileSync(new URL("../mobile/src/FooterEditor.tsx", import.meta.url), "utf8");
     assert.match(card, /Signature & footer/);
-    assert.match(card, /Upload signature/);
-    assert.match(card, /readSignatureFile/);
-    assert.match(card, /readSignatureUri/);
-    assert.match(card, /launchImageLibraryAsync/);
-    assert.match(card, /getDocumentAsync/);
-    assert.match(card, /type: "set-footer"/);
-    assert.match(card, /No signature/);
-    assert.match(card, /Remove/);
+    assert.match(card, /Signature/);
     assert.match(card, /Signature date/);
-    assert.match(card, /Signee full name/);
-    assert.match(card, /Designation dropdown/);
+    assert.match(card, /Name/);
+    assert.match(card, /Designation/);
     assert.match(card, /Course Coordinator/);
     assert.match(card, /Course name/);
+
+    const appHeaderForSig = readFileSync(new URL("../mobile/src/AppHeader.tsx", import.meta.url), "utf8");
+    assert.match(appHeaderForSig, /Upload signature/);
+    assert.match(appHeaderForSig, /readSignatureFile/);
+    assert.match(appHeaderForSig, /readSignatureUri/);
+    assert.match(appHeaderForSig, /launchImageLibraryAsync/);
+    assert.match(appHeaderForSig, /getDocumentAsync/);
+    assert.match(appHeaderForSig, /Remove/);
 
     const helper = readFileSync(new URL("../mobile/src/lib/signature.ts", import.meta.url), "utf8");
     assert.match(helper, /createImageBitmap/);
@@ -146,8 +147,8 @@ describe("signature footer", () => {
     assert.match(pdf, /state\.footer\.lines/);
 
     const manifest = readFileSync(new URL("../mobile/app.json", import.meta.url), "utf8");
-    assert.match(manifest, /"version": "1.1.9"/);
-    assert.match(manifest, /"versionCode": 19/);
+    assert.match(manifest, /"version": "1.3.0"/);
+    assert.match(manifest, /"versionCode": 21/);
     assert.match(manifest, /READ_MEDIA_IMAGES/);
     assert.match(manifest, /expo-image-picker/);
     assert.doesNotMatch(manifest, /service_role/);

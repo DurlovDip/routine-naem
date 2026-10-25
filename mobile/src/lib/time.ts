@@ -104,7 +104,7 @@ export function clampDuration(value: number): number {
 export function toIsoDate(value: string): string {
   if (!value) return "";
   const trimmed = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
 
   const mFull = trimmed.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
   if (mFull) {
@@ -140,3 +140,37 @@ export function formatSignatureDate(value: string): string {
   return trimmed;
 }
 
+/**
+ * Formats an ISO timestamp for display, e.g. "Today, 10:45 PM" or "25/10/2026, 10:45 PM".
+ */
+export function formatLastUpdated(iso?: string | null): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+
+    let hours = d.getHours();
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12;
+    if (hours === 0) hours = 12;
+    const formattedHours = String(hours).padStart(2, "0");
+
+    const now = new Date();
+    const isToday =
+      d.getDate() === now.getDate() &&
+      d.getMonth() === now.getMonth() &&
+      d.getFullYear() === now.getFullYear();
+
+    if (isToday) {
+      return `Today, ${formattedHours}:${minutes} ${ampm}`;
+    }
+    return `${day}/${month}/${year}, ${formattedHours}:${minutes} ${ampm}`;
+  } catch {
+    return "";
+  }
+}

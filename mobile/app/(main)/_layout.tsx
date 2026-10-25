@@ -11,7 +11,9 @@ export default function MainLayout() {
   const auth = useAuth();
   const access = useAccess();
   const courses = useCourses();
+  const isSuperAdmin = access.role === "super_admin";
   const courseEditable = courses.ready && Boolean(courses.selected?.canEdit);
+  const canAccessEditor = !isSuperAdmin && access.canEdit && courseEditable;
   const insets = useSafeAreaInsets();
   if (!auth.ready) return null;
   if (!auth.session) return <Redirect href="/sign-in" />;
@@ -47,7 +49,7 @@ export default function MainLayout() {
           name="editor"
           options={{
             title: "Editor",
-            href: access.canEdit && courseEditable ? undefined : null,
+            href: canAccessEditor ? undefined : null,
             tabBarIcon: ({ color, size }) => <Ionicons name="create-outline" color={typeof color === "string" ? color : colors.muted} size={size} />,
           }}
         />
@@ -57,6 +59,12 @@ export default function MainLayout() {
             title: "Manage",
             href: access.canAdmin ? undefined : null,
             tabBarIcon: ({ color, size }) => <Ionicons name="grid-outline" color={typeof color === "string" ? color : colors.muted} size={size} />,
+          }}
+        />
+        <Tabs.Screen
+          name="tools"
+          options={{
+            href: null,
           }}
         />
       </Tabs>

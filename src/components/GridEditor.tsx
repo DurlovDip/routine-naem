@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { AlertTriangle, Link2, Plus, Trash2 } from "lucide-react";
-import { buildTimeline, cellHasConflict, findConflicts, maxSpanFrom, rowCells, type SheetSession, type Timeline } from "../lib/schedule";
+import {
+  availableSubNumbers,
+  buildTimeline,
+  cellHasConflict,
+  findConflicts,
+  maxSpanFrom,
+  rowCells,
+  type SheetSession,
+  type Timeline,
+} from "../lib/schedule";
 import { cleanBatchNumber, formatModuleCode, orderedManagers, parseModuleCode, rosterRange } from "../lib/text";
 import { formatClock, formatRange } from "../lib/time";
 import type { Batch, CellContent, DayPlan } from "../lib/types";
@@ -363,6 +372,15 @@ function InlineCell({
   const maxSpan = maxSpanFrom(day.slots, cell.anchorId);
   const canMerge = maxSpan >= 2 || cell.span >= 2;
 
+  const subOptions = availableSubNumbers({
+    state,
+    batchId,
+    currentDayId: day.id,
+    currentSessionId: cell.anchorId,
+    selectedModuleNumber: moduleNumber,
+    currentCellCode: cell.content.code,
+  });
+
   function update(next: CellContent) {
     dispatch({
       type: "set-cell",
@@ -412,13 +430,24 @@ function InlineCell({
           ariaLabel="Module number"
           value={moduleNumber}
           options={withCurrent(state.moduleNumbers, moduleNumber)}
-          onChange={(value) => update({ ...cell.content, code: formatModuleCode(value, subNumber) })}
+          onChange={(value) => {
+            const nextSubs = availableSubNumbers({
+              state,
+              batchId,
+              currentDayId: day.id,
+              currentSessionId: cell.anchorId,
+              selectedModuleNumber: value,
+              currentCellCode: cell.content.code,
+            });
+            const nextSub = nextSubs.includes(subNumber) ? subNumber : "";
+            update({ ...cell.content, code: formatModuleCode(value, nextSub) });
+          }}
         />
         <PlainSelect
           className="sub"
           ariaLabel="Sub-number"
           value={subNumber}
-          options={withCurrent(state.subNumbers, subNumber)}
+          options={subOptions}
           onChange={(value) => update({ ...cell.content, code: formatModuleCode(moduleNumber, value) })}
         />
       </div>

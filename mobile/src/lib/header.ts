@@ -34,8 +34,35 @@ export function routineCourseLabel(header: Array<{ style: string; text: string }
   return courseName.trim();
 }
 
-/** "Course Coordinator: …" from the saved signee, then an assigned coordinator. */
-export function routineCoordinatorLabel(footerName: string, assignedName = ""): string {
-  const name = footerName.trim() || assignedName.trim();
-  return name ? `Course Coordinator: ${name}` : "";
+/**
+ * "Course Coordinator: …" from the saved signee or assigned coordinator.
+ * If multiple coordinators exist, formats as "Course Coordinator: <First> and others".
+ */
+export function routineCoordinatorLabel(
+  footerName: string,
+  assignedName = "",
+  coordinatorNames: string[] = [],
+): string {
+  const cleanList = coordinatorNames.map((n) => n.trim()).filter(Boolean);
+  if (cleanList.length > 1) {
+    const trimmedFooter = footerName.trim();
+    const primary = cleanList.find((n) => n.toLowerCase() === trimmedFooter.toLowerCase()) ?? cleanList[0];
+    return `Course Coordinator: ${primary} and others`;
+  }
+  if (cleanList.length === 1) {
+    return `Course Coordinator: ${cleanList[0]}`;
+  }
+
+  const fallback = footerName.trim() || assignedName.trim();
+  if (!fallback) return "";
+
+  const splitNames = fallback
+    .split(/\s*(?:,|&|\band\b)\s*/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (splitNames.length > 1) {
+    return `Course Coordinator: ${splitNames[0]} and others`;
+  }
+
+  return `Course Coordinator: ${fallback}`;
 }

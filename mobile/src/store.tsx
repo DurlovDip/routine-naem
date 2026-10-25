@@ -8,10 +8,11 @@ import { withCourseTitle } from "./lib/courses";
 import { createInitialState } from "./lib/demo";
 import { footerSigneePatch, signeeFromTeacher } from "./lib/footerDefaults";
 import { scheduleReducer, type Action } from "./lib/reducer";
-import { activeDay } from "./lib/schedule";
+import { activeDay, scheduleContentChanged } from "./lib/schedule";
 import { normalizeState } from "./lib/storage";
 import { BUILTIN_DESIGNATIONS } from "./lib/designations";
 import { loadRemoteSchedule, subscribeToRemoteSchedule, upsertRemoteSchedule, type RemoteLoad } from "./lib/supabase";
+import { formatSignatureDate, todayInDhaka } from "./lib/time";
 import type { AppState, DayPlan } from "./lib/types";
 
 const CACHE_KEY = "routine-naem-schedule-cache";
@@ -28,6 +29,7 @@ type Store = {
   designations: string[];
   lastSyncedAt: Date | null;
   refreshFromCloud: () => Promise<void>;
+  publishRoutine: () => Promise<boolean>;
 };
 
 const ScheduleContext = createContext<Store | null>(null);
@@ -58,6 +60,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   const stateRef = useRef(state);
   const prevUser = useRef<string | null>(null);
   stateRef.current = state;
+  const lastSavedContentRef = useRef<AppState>(state);
 
   const role = auth.session?.role;
   const realSession = Boolean(auth.session);
@@ -84,6 +87,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
         const parsed = normalizeState(JSON.parse(raw));
         if (parsed) {
           skipCloudSave.current = true;
+          lastSavedContentRef.current = parsed;
           dispatch({ type: "replace", state: parsed });
         }
       } catch {
@@ -109,17 +113,44 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     signeeApplied.current = false;
     if (!screenshotMode) setScheduleReady(false);
-  }, [auth.session?.userId]);
+  }, [auth.session?.userId, target?.scheduleId]);
 
   useEffect(() => {
     if (!hydrated || !scheduleReady || !canWrite || !auth.session || signeeApplied.current) return;
+    const session = auth.session;
     signeeApplied.current = true;
-    const patch = footerSigneePatch(
-      stateRef.current.footer,
-      signeeFromTeacher(auth.session, stateRef.current.teachers),
-    );
-    if (patch) dispatch({ type: "set-footer", patch });
-  }, [hydrated, scheduleReady, scheduleEpoch, canWrite, auth.session, state.footer.name, state.footer.designation, state.teachers]);
+    let cancelled = false;
+    void (async () => {
+      const sig = await auth.loadSignature();
+      if (cancelled) return;
+      const signatureDate = target?.updatedAt
+        ? formatSignatureDate(target.updatedAt)
+        : formatSignatureDate(todayInDhaka());
+      const patch = footerSigneePatch(
+        stateRef.current.footer,
+        signeeFromTeacher(session, stateRef.current.teachers, {
+          signature: sig,
+          courseName: target?.name,
+          signatureDate,
+        }),
+      );
+      if (patch) dispatch({ type: "set-footer", patch });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    hydrated,
+    scheduleReady,
+    scheduleEpoch,
+    canWrite,
+    auth.session,
+    target?.name,
+    target?.updatedAt,
+    state.footer.name,
+    state.footer.designation,
+    state.teachers,
+  ]);
 
   useEffect(() => {
     const id = auth.session?.userId ?? null;
@@ -135,11 +166,17 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   }, [auth.session?.userId]);
 
   const applyRemote = useCallback((next: AppState) => {
+    const wasApplied = remoteApplied.current;
     remoteApplied.current = true;
     skipCloudSave.current = true;
-    signeeApplied.current = false;
-    setScheduleEpoch((value) => value + 1);
-    dispatch({ type: "replace", state: next });
+    const currentActiveDayId = stateRef.current.activeDayId;
+    const keepLocal = wasApplied && next.days.some((d) => d.id === currentActiveDayId);
+    const resolvedActiveDayId = keepLocal
+      ? currentActiveDayId
+      : (next.days.find((d) => d.id === next.activeDayId)?.id ?? next.days[0]?.id ?? next.activeDayId);
+    const merged = { ...next, activeDayId: resolvedActiveDayId };
+    lastSavedContentRef.current = merged;
+    dispatch({ type: "replace", state: merged });
   }, []);
 
   const noteRemote = useCallback((remote: RemoteLoad) => {
@@ -159,6 +196,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   const publish = useCallback(async () => {
     const current = targetRef.current;
     if (!current) return false;
+    lastSavedContentRef.current = stateRef.current;
     const result = await upsertRemoteSchedule(stateRef.current, {
       catalogs: canWriteCatalog,
       scheduleId: current.scheduleId,
@@ -249,7 +287,9 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       hydratedStateSeen.current = true;
       return;
     }
-    if (!cloudReady.current && canWrite) dirtyDuringLoad.current = true;
+    if (!cloudReady.current && canWrite && scheduleContentChanged(lastSavedContentRef.current, state)) {
+      dirtyDuringLoad.current = true;
+    }
   }, [state, hydrated, canWrite]);
 
   useEffect(() => {
@@ -257,6 +297,9 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     if (!cloudReady.current) return;
     if (skipCloudSave.current) {
       skipCloudSave.current = false;
+      return;
+    }
+    if (!scheduleContentChanged(lastSavedContentRef.current, state)) {
       return;
     }
     dirtyDuringLoad.current = false;
@@ -270,7 +313,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   }, [state, hydrated, canWrite, publish, target?.scheduleId]);
 
   return (
-    <ScheduleContext.Provider value={{ state, dispatch, day, hydrated, syncStatus, syncError, designations, lastSyncedAt, refreshFromCloud }}>
+    <ScheduleContext.Provider value={{ state, dispatch, day, hydrated, syncStatus, syncError, designations, lastSyncedAt, refreshFromCloud, publishRoutine: publish }}>
       {children}
     </ScheduleContext.Provider>
   );

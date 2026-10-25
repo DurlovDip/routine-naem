@@ -42,9 +42,62 @@ describe("mobile course switcher", () => {
     assert.doesNotMatch(admin, /on the website/);
     assert.match(panel, /Create course/);
     assert.match(panel, /Save course/);
-    assert.match(panel, /Open routine/);
     assert.match(panel, /End course/);
     assert.match(panel, /type: "date"/);
     assert.match(panel, /mode="date"/);
+
+    // Verify Manage tabs: Batches is removed; Modules and Teachers are present
+    assert.doesNotMatch(admin, /label: "Batches"/);
+    assert.match(admin, /label: "Modules"/);
+    assert.match(admin, /label: "Teachers"/);
+
+    // Verify New Teacher card is inside Roles with role and default PIN 6832
+    assert.match(admin, /New teacher/);
+    assert.match(admin, /finalPin = newPin\.trim\(\) \|\| "6832"/);
+    assert.match(admin, /PIN \(default 6832\)/);
+
+    // Verify minimized teacher item with edit icon and separate EditTeacherModal
+    assert.match(admin, /testID=\{`teacher-item-\$\{row\.teacherId\}`\}/);
+    assert.match(admin, /testID=\{`edit-teacher-\$\{row\.teacherId\}`\}/);
+    assert.match(admin, /function EditTeacherModal/);
+    assert.doesNotMatch(admin, /borderLeftWidth: 3/);
+    assert.doesNotMatch(admin, /roleLabel\(row\.role\)/);
+
+    // Verify ModulesPanel: New module card on top, minimized module rows, and EditModuleModal
+    assert.match(admin, /New module/);
+    assert.match(admin, /testID=\{`module-item-\$\{module\.id\}`\}/);
+    assert.match(admin, /testID=\{`edit-module-\$\{module\.id\}`\}/);
+    assert.match(admin, /function EditModuleModal/);
+
+    // Verify coursewise coordinator dropdown and assignment in CoursesPanel
+    assert.match(panel, /Label>Coordinators<\/Label>/);
+    assert.match(panel, /placeholder="\+ Add coordinator"/);
+    assert.match(panel, /onAssignCoordinator/);
+    assert.match(panel, /onRemoveCoordinator/);
+
+    // Verify minimized course row with edit icon and EditCourseModal
+    assert.match(panel, /function MinimizedCourseRow/);
+    assert.match(panel, /function EditCourseModal/);
+    assert.match(panel, /testID=\{`course-card-\$\{course\.id\}`\}/);
+    assert.match(panel, /testID=\{`edit-course-\$\{course\.id\}`\}/);
+    assert.match(panel, /isSuperAdmin/);
+
+    // Verify Editor tab is hidden for superadmin in layout and editor index
+    const layout = readFileSync(new URL("../mobile/app/(main)/_layout.tsx", import.meta.url), "utf8");
+    assert.match(layout, /isSuperAdmin = access\.role === "super_admin"/);
+    assert.match(layout, /canAccessEditor = !isSuperAdmin && access\.canEdit && courseEditable/);
+
+    const editorScreen = readFileSync(new URL("../mobile/app/(main)/editor/index.tsx", import.meta.url), "utf8");
+    assert.match(editorScreen, /if \(access\.role === "super_admin"\) return <Redirect href="\/\(main\)\/routine" \/>/);
+
+    // Verify Mine section is hidden for superadmin in routine.tsx
+    const routineScreen = readFileSync(new URL("../mobile/app/(main)/routine.tsx", import.meta.url), "utf8");
+    assert.match(routineScreen, /isSuperAdmin = access\.role === "super_admin"/);
+    assert.match(routineScreen, /!isSuperAdmin \? \(/);
+
+    // Verify Tools section is removed from tab bar (href: null) and redirects
+    assert.match(layout, /name="tools"[\s\S]*href:\s*null/);
+    const toolsScreen = readFileSync(new URL("../mobile/app/(main)/tools.tsx", import.meta.url), "utf8");
+    assert.match(toolsScreen, /Redirect href="\/\(main\)\/editor"/);
   });
 });

@@ -165,7 +165,9 @@ export async function loadRemoteSchedule(target?: ScheduleTarget): Promise<Remot
         baseState.moduleNumbers = catalog.moduleNumbers;
         baseState.subNumbers = catalog.subNumbers;
       }
-      if (batches) baseState.batches = batches;
+      if (batches && (!baseState.batches || baseState.batches.length === 0)) {
+        baseState.batches = batches;
+      }
       designations = designationChoices(
         designations,
         baseState.teachers.map((teacher) => teacher.designation),
@@ -187,27 +189,24 @@ export async function fetchRemoteSchedule(): Promise<AppState | null> {
   return result.state;
 }
 
-async function deleteMissingTeachers(teachers: Teacher[]): Promise<string | null> {
-  if (teachers.length === 0) return null;
-  const { data: remoteRows, error } = await supabase.from(TEACHERS_TABLE).select("id");
-  if (error) return `Teachers: ${error.message}`;
-  if (!remoteRows) return null;
-  const activeIds = new Set(teachers.map((t) => t.id));
-  const toDelete = remoteRows.map((r: { id: string }) => r.id).filter((id) => !activeIds.has(id));
-  if (toDelete.length === 0) return null;
-  const { error: deleteErr } = await supabase.from(TEACHERS_TABLE).delete().in("id", toDelete);
-  return deleteErr ? `Teachers: ${deleteErr.message}` : null;
+async function deleteMissingTeachers(_teachers: Teacher[]): Promise<string | null> {
+  // Institutional teachers are directory accounts managed via admin RPCs and must never be deleted by a routine save.
+  return null;
 }
 
 async function deleteMissingModules(modules: ModuleEntry[]): Promise<string | null> {
   if (modules.length === 0) return null;
   const { data: remoteRows, error } = await supabase.from(MODULES_TABLE).select("id");
-  if (error) return `Modules: ${error.message}`;
+  if (error) {
+    if (/permission denied|violates row-level security|policy/i.test(error.message)) return null;
+    return `Modules: ${error.message}`;
+  }
   if (!remoteRows) return null;
   const activeNumIds = new Set(modules.map((m, idx) => parseInt(m.id.replace(/\D/g, ""), 10) || (idx + 1)));
   const toDelete = remoteRows.map((r: { id: number }) => r.id).filter((id) => !activeNumIds.has(id));
   if (toDelete.length === 0) return null;
   const { error: deleteErr } = await supabase.from(MODULES_TABLE).delete().in("id", toDelete);
+  if (deleteErr && /permission denied|violates row-level security|policy/i.test(deleteErr.message)) return null;
   return deleteErr ? `Modules: ${deleteErr.message}` : null;
 }
 
@@ -216,7 +215,10 @@ async function deleteMissingBatches(batches: Batch[], courseId: string | null): 
   let query = supabase.from(BATCHES_TABLE).select("id");
   if (courseId) query = query.eq("course_id", courseId);
   const { data: remoteRows, error } = await query;
-  if (error) return `Batches: ${error.message}`;
+  if (error) {
+    if (/permission denied|violates row-level security|policy/i.test(error.message)) return null;
+    return `Batches: ${error.message}`;
+  }
   if (!remoteRows) return null;
   const activeNumIds = new Set(batches.map((b, idx) => parseInt(b.id.replace(/\D/g, ""), 10) || (idx + 1)));
   const toDelete = remoteRows.map((r: { id: number }) => r.id).filter((id) => !activeNumIds.has(id));
@@ -224,79 +226,106 @@ async function deleteMissingBatches(batches: Batch[], courseId: string | null): 
   let remove = supabase.from(BATCHES_TABLE).delete().in("id", toDelete);
   if (courseId) remove = remove.eq("course_id", courseId);
   const { error: deleteErr } = await remove;
+  if (deleteErr && /permission denied|violates row-level security|policy/i.test(deleteErr.message)) return null;
   return deleteErr ? `Batches: ${deleteErr.message}` : null;
 }
 
 async function syncTeachers(teachers: Teacher[], timestamp: string): Promise<string | null> {
   if (teachers.length === 0) return null;
 
-  const rows = teachers.map((t) => ({
-    id: t.id,
-    name: t.name,
-    designation: t.designation || "",
-    updated_at: timestamp,
-  }));
-  const { error: upsertErr } = await supabase.from(TEACHERS_TABLE).upsert(rows, { onConflict: "id" }).select("id");
-  if (upsertErr && /designation/i.test(upsertErr.message)) {
-    const fallbackRows = teachers.map((t) => ({
+  try {
+    const rows = teachers.map((t) => ({
       id: t.id,
       name: t.name,
+      designation: t.designation || "",
       updated_at: timestamp,
     }));
-    const { error: fallbackErr } = await supabase.from(TEACHERS_TABLE).upsert(fallbackRows, { onConflict: "id" }).select("id");
-    if (fallbackErr) return `Teachers: ${fallbackErr.message}`;
-  } else if (upsertErr) {
-    return `Teachers: ${upsertErr.message}`;
+    const { error: upsertErr } = await supabase.from(TEACHERS_TABLE).upsert(rows, { onConflict: "id" }).select("id");
+    if (upsertErr) {
+      if (/permission denied|violates row-level security|policy/i.test(upsertErr.message)) {
+        return null;
+      }
+      if (/designation/i.test(upsertErr.message)) {
+        const fallbackRows = teachers.map((t) => ({
+          id: t.id,
+          name: t.name,
+          updated_at: timestamp,
+        }));
+        const { error: fallbackErr } = await supabase.from(TEACHERS_TABLE).upsert(fallbackRows, { onConflict: "id" }).select("id");
+        if (fallbackErr) {
+          if (/permission denied|violates row-level security|policy/i.test(fallbackErr.message)) return null;
+          return `Teachers: ${fallbackErr.message}`;
+        }
+      } else {
+        return `Teachers: ${upsertErr.message}`;
+      }
+    }
+  } catch {
+    return null;
   }
 
-  return deleteMissingTeachers(teachers);
+  return null;
 }
 
 async function syncModules(modules: ModuleEntry[], timestamp: string): Promise<string | null> {
   if (modules.length === 0) return null;
 
-  const rows = modules.map((m, index) => {
-    const numId = parseInt(m.id.replace(/\D/g, ""), 10) || (index + 1);
-    const parsed = parseModuleCode(m.code);
-    const mNum = m.moduleNumber ?? (parsed ? parsed.moduleNumber.replace(/^M-/, "") : m.code);
-    const sNum = m.moduleSubnumber ?? (parsed ? parsed.subNumber.replace(/^\./, "") : "");
-    const name = m.moduleName ?? m.title ?? "";
-    return {
-      id: numId,
-      module_number: mNum,
-      module_subnumber: sNum,
-      module_name: name,
-      updated_at: timestamp,
-    };
-  });
-  const { error: upsertErr } = await supabase.from(MODULES_TABLE).upsert(rows, { onConflict: "id" });
-  if (upsertErr) return `Modules: ${upsertErr.message}`;
-  return deleteMissingModules(modules);
+  try {
+    const rows = modules.map((m, index) => {
+      const numId = parseInt(m.id.replace(/\D/g, ""), 10) || (index + 1);
+      const parsed = parseModuleCode(m.code);
+      const mNum = m.moduleNumber ?? (parsed ? parsed.moduleNumber.replace(/^M-/, "") : m.code);
+      const sNum = m.moduleSubnumber ?? (parsed ? parsed.subNumber.replace(/^\./, "") : "");
+      const name = m.moduleName ?? m.title ?? "";
+      return {
+        id: numId,
+        module_number: mNum,
+        module_subnumber: sNum,
+        module_name: name,
+        updated_at: timestamp,
+      };
+    });
+    const { error: upsertErr } = await supabase.from(MODULES_TABLE).upsert(rows, { onConflict: "id" });
+    if (upsertErr) {
+      if (/permission denied|violates row-level security|policy/i.test(upsertErr.message)) return null;
+      return `Modules: ${upsertErr.message}`;
+    }
+    return deleteMissingModules(modules);
+  } catch {
+    return null;
+  }
 }
 
 async function syncBatches(batches: Batch[], timestamp: string, courseId: string | null): Promise<string | null> {
   if (batches.length === 0) return null;
 
-  const rows = batches.map((b, index) => {
-    const numId = parseInt(b.id.replace(/\D/g, ""), 10) || (index + 1);
-    return {
-      id: numId,
-      name: b.name ?? "",
-      number_of_students: b.numberOfStudents ?? 40,
-      updated_at: timestamp,
-      ...(courseId ? { course_id: courseId } : {}),
-    };
-  });
-  const { error: upsertErr } = await supabase.from(BATCHES_TABLE).upsert(rows, { onConflict: courseId ? "course_id,id" : "id" });
-  if (upsertErr) return `Batches: ${upsertErr.message}`;
-  return deleteMissingBatches(batches, courseId);
+  try {
+    const rows = batches.map((b, index) => {
+      const numId = parseInt(b.id.replace(/\D/g, ""), 10) || (index + 1);
+      return {
+        id: numId,
+        name: b.name ?? "",
+        number_of_students: b.numberOfStudents ?? 40,
+        updated_at: timestamp,
+        ...(courseId ? { course_id: courseId } : {}),
+      };
+    });
+    const { error: upsertErr } = await supabase.from(BATCHES_TABLE).upsert(rows, { onConflict: courseId ? "course_id,id" : "id" });
+    if (upsertErr) {
+      if (/permission denied|violates row-level security|policy/i.test(upsertErr.message)) return null;
+      return `Batches: ${upsertErr.message}`;
+    }
+    return deleteMissingBatches(batches, courseId);
+  } catch {
+    return null;
+  }
 }
 
 
 /**
  * Persists the schedule state to Supabase:
  * - Saves the full schedule JSON in schedules table
- * - Upserts relational records in teachers, modules, and batches tables
+ * - Best-effort syncs relational records in teachers, modules, and batches tables
  */
 export async function upsertRemoteSchedule(
   state: AppState,
@@ -304,7 +333,7 @@ export async function upsertRemoteSchedule(
 ): Promise<{ ok: boolean; error: string | null }> {
   try {
     const now = new Date().toISOString();
-    const catalogs = options.catalogs !== false;
+    const catalogs = options.catalogs === true;
     const scheduleId = options.scheduleId ?? SCHEDULE_ROW_ID;
     const courseId = options.courseId ?? null;
     const skipped: Promise<string | null> = Promise.resolve(null);
@@ -328,17 +357,16 @@ export async function upsertRemoteSchedule(
       catalogs ? syncBatches(state.batches, now, courseId) : skipped,
     ]);
 
-    const problems = [
-      scheduleRes.error ? `Schedule: ${scheduleRes.error.message}` : null,
-      teachersError,
-      modulesError,
-      batchesError,
-    ].filter((item): item is string => Boolean(item));
-    if (problems.length > 0) {
-      const error = problems.join("\n");
-      console.error("Error saving schedule to Supabase:", error);
-      return { ok: false, error };
+    if (scheduleRes.error) {
+      console.error("Error saving schedule to Supabase:", scheduleRes.error.message);
+      return { ok: false, error: scheduleRes.error.message };
     }
+
+    const catalogWarnings = [teachersError, modulesError, batchesError].filter(Boolean);
+    if (catalogWarnings.length > 0) {
+      console.warn("Catalog sync skipped or restricted:", catalogWarnings.join("; "));
+    }
+
     return { ok: true, error: null };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);

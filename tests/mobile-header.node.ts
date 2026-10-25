@@ -37,6 +37,18 @@ describe("routine header editing", () => {
     assert.equal(routineCoordinatorLabel("Dr. Litan Kanti Halder", "Someone Else"), "Course Coordinator: Dr. Litan Kanti Halder");
     assert.equal(routineCoordinatorLabel("  ", "Dr. Litan Kanti Halder"), "Course Coordinator: Dr. Litan Kanti Halder");
     assert.equal(routineCoordinatorLabel("", ""), "");
+    assert.equal(
+      routineCoordinatorLabel("Dr. Litan Kanti Halder", "", ["Dr. Litan Kanti Halder", "Md. Sazzad Ali"]),
+      "Course Coordinator: Dr. Litan Kanti Halder and others",
+    );
+    assert.equal(
+      routineCoordinatorLabel("Dr. Litan Kanti Halder and Md. Sazzad Ali"),
+      "Course Coordinator: Dr. Litan Kanti Halder and others",
+    );
+    assert.equal(
+      routineCoordinatorLabel("Dr. Litan Kanti Halder, Md. Sazzad Ali"),
+      "Course Coordinator: Dr. Litan Kanti Halder and others",
+    );
     assert.equal(isHeaderStyle("subtitle"), true);
     assert.equal(isHeaderStyle("banner"), false);
   });
@@ -136,6 +148,10 @@ describe("routine header editing", () => {
     assert.match(stack, /<Stack/);
     const headerEditor = readFileSync(new URL("../mobile/src/HeaderEditor.tsx", import.meta.url), "utf8");
     assert.match(headerEditor, /Routine header & title/);
+    assert.match(headerEditor, /testID="routine-header-preview"/);
+    assert.match(headerEditor, /Routine Header Preview/);
+    assert.match(headerEditor, /PRINTS AS/);
+    assert.match(headerEditor, /previewInner/);
     assert.match(headerEditor, /type: "set-header-line"/);
     assert.match(headerEditor, /type: "add-header-line"/);
     const routine = readFileSync(new URL("../mobile/app/(main)/routine.tsx", import.meta.url), "utf8");

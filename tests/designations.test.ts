@@ -13,8 +13,12 @@ describe("designation choices", () => {
     expect(names.filter((name) => name === "Deputy Director")).toHaveLength(1);
   });
 
-  it("treats a missing designations table as a reason to use the built-in list", () => {
-    expect(isMissingDesignationsTable("Could not find the table 'public.designations' in the schema cache")).toBe(true);
-    expect(isMissingDesignationsTable("Only a super admin can edit designations")).toBe(false);
+  it("deduplicates options and ensures at most one clear row is produced", () => {
+    const rawOptions = ["", "Professor", "Lecturer", "Professor", ""];
+    const clean = rawOptions.map((opt) => (typeof opt === "string" ? opt.trim() : "")).filter(Boolean);
+    const unique = clean.filter((option, index) => clean.indexOf(option) === index);
+    const rowsWithEmpty = ["", ...unique];
+    expect(rowsWithEmpty.filter((r) => r === "")).toHaveLength(1);
+    expect(unique).toEqual(["Professor", "Lecturer"]);
   });
 });

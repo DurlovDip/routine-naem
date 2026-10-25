@@ -67,6 +67,26 @@ function repairDay(value: unknown): DayPlan | null {
     managers: day.managers && typeof day.managers === "object" ? day.managers : {},
     cells: day.cells && typeof day.cells === "object" ? day.cells : {},
     merges: Array.isArray(day.merges) ? day.merges : [],
+    isPublished: typeof day.isPublished === "boolean" ? day.isPublished : false,
+    publishedAt: typeof day.publishedAt === "string" ? day.publishedAt : undefined,
+    publishedSnapshot: day.publishedSnapshot
+      ? repairDay(day.publishedSnapshot) ?? undefined
+      : day.isPublished
+        ? {
+            id: day.id,
+            date: day.date,
+            dayNumber: typeof day.dayNumber === "number" ? day.dayNumber : 1,
+            dayStart: typeof day.dayStart === "string" ? day.dayStart : "09:00",
+            recapMin: typeof day.recapMin === "number" ? day.recapMin : 30,
+            defaultSessionMin: typeof day.defaultSessionMin === "number" ? day.defaultSessionMin : 60,
+            slots: day.slots,
+            managers: day.managers && typeof day.managers === "object" ? day.managers : {},
+            cells: day.cells && typeof day.cells === "object" ? day.cells : {},
+            merges: Array.isArray(day.merges) ? day.merges : [],
+            isPublished: true,
+            publishedAt: typeof day.publishedAt === "string" ? day.publishedAt : undefined,
+          }
+        : undefined,
   };
 }
 
@@ -183,9 +203,11 @@ export function normalizeState(raw: unknown): AppState | null {
     subNumbers: subNumbers ?? (derived.subNumbers.length > 0 ? derived.subNumbers : demo.subNumbers),
     days,
     activeDayId: active,
-    autoRotate: Boolean(value.autoRotate),
+    autoRotate: value.autoRotate !== false,
     showConflicts: value.showConflicts !== false,
     footer,
+    isPublished: typeof value.isPublished === "boolean" ? value.isPublished : false,
+    publishedAt: typeof value.publishedAt === "string" ? value.publishedAt : undefined,
   };
 }
 

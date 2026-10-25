@@ -6,13 +6,15 @@ export const STOCK_FOOTER_DESIGNATION = "Assistant Director";
 export type Signee = {
   name: string;
   designation?: string;
+  signature?: string | null;
+  courseName?: string;
+  signatureDate?: string;
 };
 
 /**
- * Fills an empty signee name from the signed-in teacher, and a missing
- * designation from that teacher's designation. A name that is already stored
- * is left alone, including when the person later clears it during this visit
- * (the caller applies the patch once per loaded schedule).
+ * Fills an empty signee name from the signed-in teacher, missing designation,
+ * course name from the course created by superadmin, published/last-modified date,
+ * and signature from profile.
  */
 export function footerSigneePatch(footer: Footer, signee: Signee): Partial<Footer> | null {
   const patch: Partial<Footer> = {};
@@ -28,18 +30,39 @@ export function footerSigneePatch(footer: Footer, signee: Signee): Partial<Foote
     patch.designation = nextDesignation;
   }
 
+  if (signee.courseName && signee.courseName !== footer.courseName) {
+    patch.courseName = signee.courseName;
+  }
+
+  if (signee.signatureDate && signee.signatureDate !== footer.signatureDate) {
+    patch.signatureDate = signee.signatureDate;
+  }
+
+  if (!footer.signature && signee.signature) {
+    patch.signature = signee.signature;
+  }
+
   return Object.keys(patch).length > 0 ? patch : null;
 }
 
 export function signeeFromTeacher(
   session: { teacherId: string; teacherName: string },
   teachers: Array<{ id: string; name: string; designation?: string }>,
+  extras?: {
+    signature?: string | null;
+    courseName?: string;
+    signatureDate?: string;
+  },
 ): Signee {
   const teacher =
     teachers.find((item) => item.id === session.teacherId) ??
     teachers.find((item) => item.name.trim() === session.teacherName.trim());
-  return {
+  const result: Signee = {
     name: session.teacherName.trim(),
     designation: (teacher?.designation ?? "").trim(),
   };
+  if (extras?.signature !== undefined) result.signature = extras.signature;
+  if (extras?.courseName !== undefined) result.courseName = extras.courseName;
+  if (extras?.signatureDate !== undefined) result.signatureDate = extras.signatureDate;
+  return result;
 }

@@ -6,12 +6,15 @@ import { buildScheduleDocument } from "../src/lib/docx";
 import { normalizeState } from "../src/lib/storage";
 import { scheduleReducer } from "../src/lib/reducer";
 import {
+  availableSubNumbers,
   buildTimeline,
   describeRow,
+  existingSubNumbersForModule,
   findConflicts,
+  scheduleContentChanged,
   sessionsContiguous,
 } from "../src/lib/schedule";
-import { batchLines, formatModuleCode, joinWithAnd, parseModuleCode, rotateIds } from "../src/lib/text";
+import { batchLines, formatModuleCode, joinWithAnd, parseModuleCode, rotateIds, shortBatchLabel } from "../src/lib/text";
 import { formatClock, formatSignatureDate, toIsoDate, weekdayName } from "../src/lib/time";
 
 describe("demo day", () => {
@@ -98,6 +101,9 @@ describe("rotation, merges and clashes", () => {
     expect(rotateIds(roster, ["09", "10"])).toEqual(["11", "12"]);
     expect(rotateIds(roster, ["29", "30"])).toEqual(["01", "02"]);
     expect(rotateIds(roster, ["30"])).toEqual(["01"]);
+    expect(rotateIds(roster, ["13", "14"])).toEqual(["15", "16"]);
+    expect(rotateIds(roster, ["13"])).toEqual(["14"]);
+    expect(rotateIds(roster, ["14"])).toEqual(["15"]);
   });
 
   it("refuses a merge that would cross a break", () => {
@@ -196,6 +202,16 @@ describe("rotation, merges and clashes", () => {
     expect(formatSignatureDate("2026-10-17")).toBe("17.10.26");
     expect(formatSignatureDate("17.10.26")).toBe("17.10.26");
     expect(formatSignatureDate("2026-05-09")).toBe("09.05.26");
+  });
+
+  it("extracts short numeric batch labels", () => {
+    expect(shortBatchLabel("9th", "batch-9")).toBe("9");
+    expect(shortBatchLabel("10th", "batch-10")).toBe("10");
+    expect(shortBatchLabel("11th", "batch-11")).toBe("11");
+    expect(shortBatchLabel("12th", "batch-12")).toBe("12");
+    expect(shortBatchLabel("13th", "batch-13")).toBe("13");
+    expect(shortBatchLabel("Batch 14", "batch-14")).toBe("14");
+    expect(shortBatchLabel("", "batch-9")).toBe("9");
   });
 
   it("handles teacher designation assignment and addition", () => {
@@ -307,7 +323,135 @@ describe("rotation, merges and clashes", () => {
     expect(normalized?.days[2].dayNumber).toBe(9);
     expect(normalized?.days[2].date).toBe("2026-10-20");
   });
+
+  it("scheduleContentChanged ignores activeDayId changes but detects real schedule edits", () => {
+    const original = createDemoState();
+    const switchedDay = scheduleReducer(original, { type: "set-active-day", id: "other-day" });
+    expect(scheduleContentChanged(original, switchedDay)).toBe(false);
+
+    const editedCell = scheduleReducer(original, {
+      type: "set-cell",
+      dayId: original.days[0].id,
+      batchId: original.batches[0].id,
+      sessionId: "s1",
+      cell: { code: "M- 9.99", note: "", teachers: ["Test"] },
+    });
+    expect(scheduleContentChanged(original, editedCell)).toBe(true);
+  });
 });
+
+describe("availableSubNumbers & duplicate module class prevention", () => {
+  it("parses module codes with or without M- prefix and formats consistently", () => {
+    expect(parseModuleCode("M- 1.01")).toEqual({ moduleNumber: "M-1", subNumber: ".01" });
+    expect(parseModuleCode("1.1")).toEqual({ moduleNumber: "M-1", subNumber: ".01" });
+    expect(parseModuleCode("M- 2.05")).toEqual({ moduleNumber: "M-2", subNumber: ".05" });
+    expect(parseModuleCode("M-1")).toEqual({ moduleNumber: "M-1", subNumber: "" });
+    expect(parseModuleCode("1")).toEqual({ moduleNumber: "M-1", subNumber: "" });
+  });
+
+  it("existingSubNumbersForModule extracts only sub-numbers belonging to the specified module", () => {
+    const modules = [
+      { id: "1", code: "M- 1.01", title: "Module 1 Part 1" },
+      { id: "2", code: "M- 1.02", title: "Module 1 Part 2" },
+      { id: "3", code: "M- 2.01", title: "Module 2 Part 1" },
+      { id: "4", code: "M- 2.03", title: "Module 2 Part 3" },
+    ];
+
+    expect(existingSubNumbersForModule(modules, "M-1")).toEqual([".01", ".02"]);
+    expect(existingSubNumbersForModule(modules, "1")).toEqual([".01", ".02"]);
+    expect(existingSubNumbersForModule(modules, "M-2")).toEqual([".01", ".03"]);
+    expect(existingSubNumbersForModule(modules, "M-3")).toEqual([]);
+  });
+
+  it("prevents duplicate module class for a batch across different days", () => {
+    const base = createDemoState();
+    // Suppose course has module 1 with .01, .02, .03
+    const modules = [
+      { id: "m1", code: "M- 1.01", title: "1.01" },
+      { id: "m2", code: "M- 1.02", title: "1.02" },
+      { id: "m3", code: "M- 1.03", title: "1.03" },
+    ];
+    // Create two days: Day 1 (Oct 20) and Day 2 (Oct 25)
+    const day1 = {
+      ...base.days[0],
+      id: "day-20",
+      date: "2026-10-20",
+      cells: {
+        "batch-9:s1": { code: "M- 1.01", note: "", teachers: ["Prof. Asisul"] },
+      },
+    };
+    const day2 = {
+      ...base.days[0],
+      id: "day-25",
+      date: "2026-10-25",
+      cells: {},
+    };
+    const state: typeof base = {
+      ...base,
+      modules,
+      days: [day1, day2],
+    };
+
+    // When editing Day 2 (Oct 25) for batch-9, M-1 should NOT show .01 because it was taken on Oct 20
+    const availableOnDay2 = availableSubNumbers({
+      state,
+      batchId: "batch-9",
+      currentDayId: "day-25",
+      currentSessionId: "s1",
+      selectedModuleNumber: "M-1",
+    });
+    expect(availableOnDay2).toEqual([".02", ".03"]);
+    expect(availableOnDay2).not.toContain(".01");
+
+    // But for batch-10 on Day 2, .01 IS available because batch-10 never took it
+    const availableForBatch10 = availableSubNumbers({
+      state,
+      batchId: "batch-10",
+      currentDayId: "day-25",
+      currentSessionId: "s1",
+      selectedModuleNumber: "M-1",
+    });
+    expect(availableForBatch10).toEqual([".01", ".02", ".03"]);
+
+    // When viewing/editing the original cell on Day 1 (Oct 20) for batch-9, .01 remains available
+    const availableOnDay1SameCell = availableSubNumbers({
+      state,
+      batchId: "batch-9",
+      currentDayId: "day-20",
+      currentSessionId: "s1",
+      selectedModuleNumber: "M-1",
+      currentCellCode: "M- 1.01",
+    });
+    expect(availableOnDay1SameCell).toContain(".01");
+  });
+
+  it("prevents duplicate module class for a batch on the same day in another session", () => {
+    const base = createDemoState();
+    const modules = [
+      { id: "m1", code: "M- 1.01", title: "1.01" },
+      { id: "m2", code: "M- 1.02", title: "1.02" },
+    ];
+    const day = {
+      ...base.days[0],
+      id: "day-01",
+      cells: {
+        "batch-9:s1": { code: "M- 1.01", note: "", teachers: [] },
+      },
+    };
+    const state = { ...base, modules, days: [day] };
+
+    // In session 2, batch-9 cannot pick 1.01 because session 1 already has it
+    const subNumbersForS2 = availableSubNumbers({
+      state,
+      batchId: "batch-9",
+      currentDayId: "day-01",
+      currentSessionId: "s2",
+      selectedModuleNumber: "M-1",
+    });
+    expect(subNumbersForS2).toEqual([".02"]);
+  });
+});
+
 
 
 
