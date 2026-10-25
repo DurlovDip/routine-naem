@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Modal, Platform, Pressable, ScrollView, StatusBar, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { buildTimeline, findConflicts, rowCells, type SheetCell } from "./lib/schedule";
 import { cleanBatchNumber, formatModule, joinWithAnd, orderedManagers, sessionSpanLabel } from "./lib/text";
 import { formatRange, formatSlashDate, weekdayName } from "./lib/time";
@@ -19,6 +20,7 @@ export function DraftRoutineModal({
   day: DayPlan;
   onClose: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   const { state } = useSchedule();
   const [viewMode, setViewMode] = useState<"table" | "cards">("table");
 
@@ -33,11 +35,23 @@ export function DraftRoutineModal({
   const conflicts = state.showConflicts ? findConflicts(state.batches, day) : [];
   const hasChanges = isDayDirty(day);
 
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === "android" ? (StatusBar.currentHeight ?? 24) : 0,
+    Platform.OS === "ios" ? 20 : 0,
+  );
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
       <View style={container}>
         {/* Header */}
-        <View style={header}>
+        <View style={[header, { paddingTop: topInset + space.sm }]}>
           <View style={{ flex: 1, paddingRight: space.sm }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <T weight="bold" style={{ fontSize: type.title, color: colors.accent }}>
@@ -351,7 +365,7 @@ const header = {
   alignItems: "center" as const,
   justifyContent: "space-between" as const,
   paddingHorizontal: space.lg,
-  paddingTop: Platform.OS === "ios" ? 20 : space.md,
+  paddingTop: space.md,
   paddingBottom: space.md,
   backgroundColor: colors.surface,
   borderBottomWidth: 1,

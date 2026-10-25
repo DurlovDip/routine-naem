@@ -156,28 +156,35 @@ export default function RoutineScreen() {
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <View
                 style={[
-                  styles.segmentBtn,
-                  styles.segmentOn,
-                  styles.routineSegment,
-                  { alignSelf: "flex-start", paddingHorizontal: space.sm },
+                  styles.segment,
+                  { alignSelf: "flex-start", paddingHorizontal: 3 },
                 ]}
               >
-                <View style={styles.routineLabelBtn}>
-                  <T weight="semibold" style={{ color: colors.accent, fontSize: 13 }}>
-                    Routine
-                  </T>
-                </View>
-                <View style={[styles.divider, { backgroundColor: colors.line }]} />
-                <Pressable
-                  testID="routine-table-toggle"
-                  accessibilityRole="button"
-                  accessibilityLabel={table ? "Switch to batch view" : "Switch to table view"}
-                  hitSlop={6}
-                  onPress={() => setTable((current) => !current)}
-                  style={({ pressed }) => [styles.toggleBtn, { opacity: pressed ? 0.6 : 1 }]}
+                <View
+                  style={[
+                    styles.segmentBtn,
+                    styles.segmentOn,
+                    styles.routineSegment,
+                    { paddingHorizontal: space.sm },
+                  ]}
                 >
-                  <Ionicons name={table ? "list-outline" : "grid-outline"} size={18} color={colors.accent} />
-                </Pressable>
+                  <View style={styles.routineLabelBtn}>
+                    <T weight="semibold" style={{ color: colors.accent, fontSize: 13 }}>
+                      Routine
+                    </T>
+                  </View>
+                  <View style={[styles.divider, { backgroundColor: colors.line }]} />
+                  <Pressable
+                    testID="routine-table-toggle"
+                    accessibilityRole="button"
+                    accessibilityLabel={table ? "Switch to batch view" : "Switch to table view"}
+                    hitSlop={6}
+                    onPress={() => setTable((current) => !current)}
+                    style={({ pressed }) => [styles.toggleBtn, { opacity: pressed ? 0.6 : 1 }]}
+                  >
+                    <Ionicons name={table ? "list-outline" : "grid-outline"} size={18} color={colors.accent} />
+                  </Pressable>
+                </View>
               </View>
             </View>
           )}
@@ -266,7 +273,7 @@ export default function RoutineScreen() {
       {!hydrated ? (
         <T style={{ padding: 16, color: colors.muted }}>Loading routine…</T>
       ) : activePane === "mine" ? (
-        <ScrollView testID="routine-mine" contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: space.xxl }}>
+        <ScrollView testID="routine-mine" style={{ flex: 1 }} contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: space.xxl }}>
           {upcoming.length === 0 ? (
             <View style={card}>
               <T style={{ color: colors.muted }}>No upcoming sessions</T>
@@ -285,13 +292,13 @@ export default function RoutineScreen() {
           )}
         </ScrollView>
       ) : table ? (
-        <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 20 }}>
           <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={{ padding: 16 }}>
             <Table rows={rows} timeline={timeline} recap={state.recapLabel} />
           </ScrollView>
         </ScrollView>
       ) : (
-        <ScrollView testID="routine-list" contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }}>
+        <ScrollView testID="routine-list" style={{ flex: 1 }} contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: space.xxl }}>
           {rows.length === 0 ? <Empty /> : rows.map((row) => <BatchCard key={row.batch.id} row={row} timeline={timeline} recap={state.recapLabel} />)}
         </ScrollView>
       )}
@@ -492,14 +499,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.paper,
     borderRadius: radius.md,
     padding: 3,
+    height: 40,
+    alignItems: "center",
   },
   segmentBtn: {
     flex: 1,
+    height: 34,
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 8,
     borderRadius: radius.sm,
-    minHeight: 38,
   },
   segmentOn: {
     backgroundColor: colors.surface,
@@ -508,16 +516,17 @@ const styles = StyleSheet.create({
   routineSegment: {
     flexDirection: "row",
     alignItems: "center",
+    height: 34,
     paddingVertical: 0,
     paddingHorizontal: 0,
   },
   routineLabelBtn: {
     flex: 1,
+    height: "100%",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 8,
-    paddingLeft: 10,
-    height: "100%",
+    paddingLeft: 12,
+    paddingRight: 4,
   },
   divider: {
     width: 1,
@@ -525,8 +534,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 3,
   },
   toggleBtn: {
-    width: 38,
-    height: 38,
+    width: 34,
+    height: 34,
     alignItems: "center",
     justifyContent: "center",
   },
