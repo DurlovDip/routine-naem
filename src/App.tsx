@@ -4,18 +4,17 @@ import { AppHeader } from "./components/AppHeader";
 import { CoursesPanel } from "./components/CoursesPanel";
 import { PeopleSection } from "./components/AccessPanels";
 import { RoutineTab } from "./components/RoutineTab";
-import { GridEditor } from "./components/GridEditor";
+import { EditorTab } from "./components/EditorTab";
 import { SignIn } from "./components/SignIn";
 import { TabNav, type TabId } from "./components/TabNav";
 import { CourseProvider, useCourses } from "./courses";
 import { DesignationsProvider } from "./designations";
-import { ScheduleProvider, useSchedule } from "./state";
+import { ScheduleProvider } from "./state";
 import { colors } from "./theme";
 
 function MainLayout() {
   const access = useAccess();
   const courses = useCourses();
-  const { day } = useSchedule();
   const isSuperAdmin = access.role === "super_admin";
   const courseEditable = courses.ready && Boolean(courses.selected?.canEdit);
   const canAccessEditor = !isSuperAdmin && access.canEdit && courseEditable;
@@ -43,12 +42,7 @@ function MainLayout() {
 
       <main className="flex-1 pb-16 sm:pb-0 overflow-auto">
         {tab === "routine" && <RoutineTab />}
-
-        {tab === "editor" && (
-          <div className="w-full h-full p-4 max-w-6xl mx-auto">
-            <GridEditor day={day} />
-          </div>
-        )}
+        {tab === "editor" && <EditorTab />}
 
         {tab === "admin" && (
           <div className="w-full max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
