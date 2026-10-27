@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { AuthProvider, useAccess, useAuth } from "./auth";
 import { AppHeader } from "./components/AppHeader";
 import { CoursesPanel } from "./components/CoursesPanel";
 import { PeopleSection } from "./components/AccessPanels";
+import { RoutineTab } from "./components/RoutineTab";
 import { GridEditor } from "./components/GridEditor";
-import { PreviewPane } from "./components/PreviewPane";
 import { SignIn } from "./components/SignIn";
 import { TabNav, type TabId } from "./components/TabNav";
 import { CourseProvider, useCourses } from "./courses";
@@ -16,7 +16,6 @@ function MainLayout() {
   const access = useAccess();
   const courses = useCourses();
   const { day } = useSchedule();
-  const sheetRef = useRef<HTMLDivElement>(null);
   const isSuperAdmin = access.role === "super_admin";
   const courseEditable = courses.ready && Boolean(courses.selected?.canEdit);
   const canAccessEditor = !isSuperAdmin && access.canEdit && courseEditable;
@@ -43,11 +42,7 @@ function MainLayout() {
       />
 
       <main className="flex-1 pb-16 sm:pb-0 overflow-auto">
-        {tab === "routine" && (
-          <div className="w-full h-full p-4 max-w-6xl mx-auto">
-            <PreviewPane day={day} sheetRef={sheetRef} />
-          </div>
-        )}
+        {tab === "routine" && <RoutineTab />}
 
         {tab === "editor" && (
           <div className="w-full h-full p-4 max-w-6xl mx-auto">
