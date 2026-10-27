@@ -1,376 +1,113 @@
-import { useRef, useState } from "react";
-import { CopyPlus, FileDown, LogIn, LogOut, Menu, Printer, Trash2, X } from "lucide-react";
-import { AuthProvider, useAuth } from "./auth";
-import { CourseProvider, useCourses } from "./courses";
-import { DesignationsProvider } from "./designations";
-import { PeopleSection } from "./components/AccessPanels";
+import { useEffect, useRef, useState } from "react";
+import { AuthProvider, useAccess, useAuth } from "./auth";
+import { AppHeader } from "./components/AppHeader";
 import { CoursesPanel } from "./components/CoursesPanel";
-import { CourseSwitcher } from "./components/CourseSwitcher";
-import { SignIn } from "./components/SignIn";
-import { ChangePinDialog } from "./components/ChangePin";
-import { BatchEditor, FooterEditor, HeaderEditor, LibraryEditor, StructureEditor } from "./components/panels";
+import { PeopleSection } from "./components/AccessPanels";
 import { GridEditor } from "./components/GridEditor";
 import { PreviewPane } from "./components/PreviewPane";
-import { Button, ConfirmDialog, Section } from "./components/ui";
-import { downloadScheduleDocx } from "./lib/docx";
-import { roleLabel } from "./lib/roles";
-import { joinWithAnd, rotateIds } from "./lib/text";
-import { addDays, formatDayNumber, formatSlashDate, weekdayName } from "./lib/time";
+import { SignIn } from "./components/SignIn";
+import { TabNav, type TabId } from "./components/TabNav";
+import { CourseProvider, useCourses } from "./courses";
+import { DesignationsProvider } from "./designations";
 import { ScheduleProvider, useSchedule } from "./state";
+import { colors } from "./theme";
 
-type Mode = "edit" | "preview" | "courses";
-
-function readHash(): Mode {
-  const hash = window.location.hash.replace(/^#/, "");
-  if (hash.startsWith("courses")) return "courses";
-  if (hash.startsWith("preview")) return "preview";
-  return "edit";
-}
-
-function modeLabel(item: Mode): string {
-  if (item === "edit") return "Editor";
-  if (item === "preview") return "Preview";
-  return "Courses";
-}
-
-function Shell() {
-  const { state, dispatch, day } = useSchedule();
-  const auth = useAuth();
+function MainLayout() {
+  const access = useAccess();
   const courses = useCourses();
-  const role = auth.session?.role;
-  const roleCanEdit = !auth.required || role === "super_admin" || role === "coordinator" || role === "temp_coordinator";
-  const canEdit = courses.ready && courses.courses.length > 0 ? Boolean(courses.selected?.canEdit) : roleCanEdit;
-  const canManageCatalog = !auth.required || role === "super_admin";
-
-  const nextDate = addDays(day.date, 1);
-  const nextDayNum = day.dayNumber + 1;
-  const nextDayExists = state.days.some(
-    (d) => d.id !== day.id && (d.date === nextDate || d.dayNumber === nextDayNum),
-  );
-  const maxDayNum = Math.max(...state.days.map((d) => d.dayNumber), 0);
-  const isDuplicateDate = state.days.some((d) => d.id !== day.id && d.date === day.date);
-  const isDuplicateDayNum = state.days.some((d) => d.id !== day.id && d.dayNumber === day.dayNumber);
-  const [mode, setMode] = useState<Mode>(() => readHash());
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [showAuthModal, setShowAuthModal] = useState(false);
-  const [showPin, setShowPin] = useState(false);
+  const { day } = useSchedule();
   const sheetRef = useRef<HTMLDivElement>(null);
-  const isSuperAdmin = auth.session?.role === "super_admin";
-  const showCourses = mode === "courses" && isSuperAdmin;
-  const view: Mode = showCourses ? "courses" : canEdit ? (mode === "courses" ? "edit" : mode) : "preview";
-  const showEditor = view === "edit";
-  const showPreview = view === "preview";
-  const viewModes: Mode[] = isSuperAdmin ? ["edit", "preview", "courses"] : ["edit", "preview"];
+  const isSuperAdmin = access.role === "super_admin";
+  const courseEditable = courses.ready && Boolean(courses.selected?.canEdit);
+  const canAccessEditor = !isSuperAdmin && access.canEdit && courseEditable;
 
-  const nextIds = state.batches.map((batch) =>
-    joinWithAnd(rotateIds(batch.roster, day.managers[batch.id] ?? [])),
-  );
-  const sameNext = nextIds.every((text) => text === nextIds[0]);
-  const nextLabel = sameNext ? nextIds[0] || "none" : "the next IDs in each roster";
+  const [tab, setTab] = useState<TabId>("routine");
+
+  // Fallback to routine if currently selected tab becomes inaccessible
+  useEffect(() => {
+    if (tab === "editor" && !canAccessEditor) {
+      setTab("routine");
+    } else if (tab === "admin" && !access.canAdmin) {
+      setTab("routine");
+    }
+  }, [tab, canAccessEditor, access.canAdmin]);
 
   return (
-    <div className="app">
-      <header className="toolbar no-print">
-        <div className="brand">
-          <div className="brand-title">Daily Schedule</div>
-          <div className="brand-sub">
-            {auth.session ? `${auth.session.teacherName} · ${roleLabel(auth.session.role)}` : "Class routine for the training course"}
-          </div>
-        </div>
-        <CourseSwitcher />
-        <button
-          type="button"
-          className="toolbar-menu-btn"
-          aria-label={menuOpen ? "Close menu" : "Open menu"}
-          aria-expanded={menuOpen}
-          onClick={() => setMenuOpen((open) => !open)}
-        >
-          {menuOpen ? <X size={18} /> : <Menu size={18} />}
-        </button>
-        <div className={menuOpen ? "toolbar-collapse open" : "toolbar-collapse"}>
-          {canEdit ? (
-            <div className="segmented" role="group" aria-label="View">
-              {viewModes.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  aria-pressed={view === item}
-                  onClick={() => {
-                    setMode(item);
-                    setMenuOpen(false);
-                  }}
-                >
-                  {modeLabel(item)}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="role-chip">View only</div>
-          )}
-          <div className="toolbar-actions">
-            <Button
-              tone="primary"
-              onClick={() => {
-                setMenuOpen(false);
-                window.print();
-              }}
-            >
-              <Printer size={16} /> Print / PDF
-            </Button>
-            <Button
-              onClick={() => {
-                setMenuOpen(false);
-                void downloadScheduleDocx(state, day);
-              }}
-            >
-              <FileDown size={16} /> Print / DOCX
-            </Button>
-            {auth.session ? (
-              <>
-                <Button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setShowPin(true);
-                  }}
-                >
-                  Change PIN
-                </Button>
-                <Button
-                  onClick={() => {
-                    setMenuOpen(false);
-                    void auth.signOut();
-                  }}
-                >
-                  <LogOut size={16} /> Sign out
-                </Button>
-              </>
-            ) : (
-              <Button
-                tone="primary"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setShowAuthModal(true);
-                }}
-              >
-                <LogIn size={16} /> Sign in
-              </Button>
-            )}
-          </div>
-        </div>
-      </header>
-      <div
-        className="workspace"
-        data-editor={showEditor ? "true" : "false"}
-        data-preview={showPreview ? "true" : "false"}
-        data-courses={showCourses ? "true" : "false"}
-      >
-        {showCourses ? (
-          <main className="courses-pane no-print">
-            <div className="courses-pane-inner">
-              <header className="courses-pane-head">
-                <h1>Courses</h1>
-              </header>
-              <CoursesPanel />
-            </div>
-          </main>
-        ) : null}
-        {showEditor ? (
-          <aside className="editor-pane no-print">
-            <div className="daybar">
-              <div className="day-chips mb-3">
-                {state.days.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className="day-chip"
-                    aria-pressed={item.id === day.id}
-                    onClick={() => dispatch({ type: "set-active-day", id: item.id })}
-                  >
-                    <strong>{formatDayNumber(item.dayNumber).replace("Day – ", "Day ")}</strong>
-                    <span>{formatSlashDate(item.date)}</span>
-                  </button>
-                ))}
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <label>
-                  <span className="field-label">Date</span>
-                  <input
-                    className={`field ${isDuplicateDate ? "border-red-500 bg-red-50/50" : ""}`}
-                    type="date"
-                    value={day.date}
-                    onChange={(event) =>
-                      dispatch({ type: "update-day", id: day.id, patch: { date: event.target.value } })
-                    }
-                  />
-                  <span className="hint">{weekdayName(day.date)}</span>
-                  {isDuplicateDate && (
-                    <span className="text-xs text-red-600 block mt-1 font-semibold">
-                      ⚠️ Date is already scheduled on another day!
-                    </span>
-                  )}
-                </label>
-                <label>
-                  <span className="field-label">Day number</span>
-                  <input
-                    className={`field ${isDuplicateDayNum ? "border-red-500 bg-red-50/50" : ""}`}
-                    type="number"
-                    min={1}
-                    max={999}
-                    value={day.dayNumber}
-                    onChange={(event) =>
-                      dispatch({
-                        type: "update-day",
-                        id: day.id,
-                        patch: { dayNumber: Number(event.target.value) },
-                      })
-                    }
-                  />
-                  {isDuplicateDayNum && (
-                    <span className="text-xs text-red-600 block mt-1 font-semibold">
-                      ⚠️ Day number {day.dayNumber} is already used!
-                    </span>
-                  )}
-                </label>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button
-                  tone="primary"
-                  disabled={nextDayExists}
-                  title={
-                    nextDayExists
-                      ? `Day ${nextDayNum < 10 ? `0${nextDayNum}` : nextDayNum} (${formatSlashDate(nextDate)}) already exists`
-                      : undefined
-                  }
-                  onClick={() => dispatch({ type: "duplicate-day", dayId: day.id })}
-                >
-                  <CopyPlus size={15} /> Duplicate to next day
-                </Button>
-                <Button
-                  disabled={nextDayExists}
-                  title={
-                    nextDayExists
-                      ? `Day ${nextDayNum < 10 ? `0${nextDayNum}` : nextDayNum} (${formatSlashDate(nextDate)}) already exists`
-                      : undefined
-                  }
-                  onClick={() => dispatch({ type: "new-day", dayId: day.id })}
-                >
-                  Blank next day
-                </Button>
-                <Button
-                  tone="danger"
-                  disabled={state.days.length <= 1}
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  <Trash2 size={15} /> Delete day
-                </Button>
-              </div>
-              {nextDayExists && (
-                <div className="mt-2 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded p-2 flex flex-wrap items-center justify-between gap-2">
-                  <span>
-                    Day {nextDayNum < 10 ? `0${nextDayNum}` : nextDayNum} ({formatSlashDate(nextDate)}) already exists in routine.
-                  </span>
-                  <Button
-                    tone="quiet"
-                    onClick={() => dispatch({ type: "duplicate-day-to-end", dayId: day.id })}
-                  >
-                    <CopyPlus size={13} /> Duplicate as Day {maxDayNum + 1 < 10 ? `0${maxDayNum + 1}` : maxDayNum + 1}
-                  </Button>
-                </div>
-              )}
-              <label className="switch mt-3">
-                <input
-                  type="checkbox"
-                  checked={state.autoRotate}
-                  onChange={(event) =>
-                    dispatch({ type: "set-auto-rotate", value: event.target.checked })
-                  }
-                />
-                Auto-rotate day managers
-              </label>
-              <p className="hint">
-                {state.autoRotate
-                  ? `The next day picks ${nextLabel} from each roster.`
-                  : "Duplicating keeps today’s day managers."}
-              </p>
-            </div>
-            <div className="px-4 py-4">
-              <GridEditor day={day} />
-            </div>
-            {auth.session?.role === "super_admin" ? (
-              <Section title="Roles" summary="Assign a course and dates">
-                <PeopleSection />
-              </Section>
-            ) : null}
-            {canManageCatalog ? (
-              <Section title="Settings" summary="Teachers and modules">
-                <LibraryEditor />
-              </Section>
-            ) : null}
-            {canManageCatalog ? (
-              <Section title="Batches and day managers" summary={`${state.batches.length} rows`}>
-                <BatchEditor day={day} />
-              </Section>
-            ) : null}
-            <Section
-              title="Times, sessions and breaks"
-              summary={`${day.slots.filter((slot) => slot.kind === "session").length} sessions`}
-            >
-              <StructureEditor day={day} />
-            </Section>
-            <Section title="Document header" summary="Scheme, course, duration">
-              <HeaderEditor />
-            </Section>
-            <Section title="Signature and footer" summary={state.footer.name}>
-              <FooterEditor />
-            </Section>
-          </aside>
-        ) : null}
-        {showPreview ? (
-          <main>
-            <PreviewPane day={day} sheetRef={sheetRef} />
-          </main>
-        ) : (
-          <div className="screen-hidden">
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: colors.desk }}>
+      <AppHeader />
+      <TabNav
+        activeTab={tab}
+        onChangeTab={setTab}
+        canAccessEditor={canAccessEditor}
+        canAdmin={access.canAdmin}
+      />
+
+      <main className="flex-1 pb-16 sm:pb-0 overflow-auto">
+        {tab === "routine" && (
+          <div className="w-full h-full p-4 max-w-6xl mx-auto">
             <PreviewPane day={day} sheetRef={sheetRef} />
           </div>
         )}
-      </div>
-      {confirmDelete ? (
-        <ConfirmDialog
-          title="Delete this day?"
-          body="The routines on the other days stay. This day’s cells are removed."
-          confirmLabel="Delete day"
-          onCancel={() => setConfirmDelete(false)}
-          onConfirm={() => {
-            dispatch({ type: "delete-day", dayId: day.id });
-            setConfirmDelete(false);
-          }}
-        />
-      ) : null}
-      {showPin && auth.session ? (
-        <ChangePinDialog open={showPin} onClose={() => setShowPin(false)} />
-      ) : null}
-      {showAuthModal && !auth.session ? (
-        <SignIn />
-      ) : null}
+
+        {tab === "editor" && (
+          <div className="w-full h-full p-4 max-w-6xl mx-auto">
+            <GridEditor day={day} />
+          </div>
+        )}
+
+        {tab === "admin" && (
+          <div className="w-full max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
+            <CoursesPanel />
+            <PeopleSection />
+          </div>
+        )}
+
+        {tab === "tools" && (
+          <div className="w-full max-w-3xl mx-auto p-6 sm:p-10 text-center">
+            <div
+              className="p-8 rounded-2xl border"
+              style={{
+                backgroundColor: colors.surface,
+                borderColor: colors.line,
+              }}
+            >
+              <h2 className="text-xl font-bold mb-2" style={{ color: colors.ink }}>
+                Tools
+              </h2>
+              <p className="text-sm" style={{ color: colors.muted }}>
+                Automatic schedule generation and routine utilities.
+              </p>
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   );
 }
 
 function Gate() {
   const auth = useAuth();
+
   if (!auth.ready) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-sm text-stone-500">Checking session…</p>
+      <div
+        className="min-h-screen flex items-center justify-center"
+        style={{ backgroundColor: colors.desk }}
+      >
+        <p className="text-sm font-medium" style={{ color: colors.muted }}>
+          Checking session…
+        </p>
       </div>
     );
   }
-  if (auth.required && !auth.session) return <SignIn />;
+
+  if (auth.required && !auth.session) {
+    return <SignIn />;
+  }
+
   return (
     <DesignationsProvider>
-      <Shell />
+      <MainLayout />
     </DesignationsProvider>
   );
 }

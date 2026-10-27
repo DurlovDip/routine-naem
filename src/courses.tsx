@@ -23,6 +23,8 @@ type CourseApi = {
   reload: () => Promise<void>;
   createCourse: (draft: CourseDraft) => Promise<string | null>;
   updateCourse: (id: string, draft: CourseDraft) => Promise<string | null>;
+  coordinators: Record<string, string[]>;
+  selectedCoordinators: string[];
 };
 
 const CourseContext = createContext<CourseApi | null>(null);
@@ -49,8 +51,34 @@ export function CourseProvider({ children }: { children: ReactNode }) {
   const [preferredId, setPreferredId] = useState<string | null>(storedCourseId);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [coordinators, setCoordinators] = useState<Record<string, string[]>>({});
+
+  const reloadCoordinators = useCallback(async () => {
+    if (!auth.ready || !auth.session) {
+      setCoordinators({});
+      return;
+    }
+    try {
+      const [t, a] = await Promise.all([auth.directory(), auth.courseAssignments()]);
+      const map: Record<string, string[]> = {};
+      for (const item of a) {
+        if (item.role === "coordinator" || item.role === "temp_coordinator") {
+          const teacher = t.find((row) => row.teacherId === item.teacherId);
+          const name = teacher?.teacherName || item.teacherId;
+          if (!map[item.courseId]) map[item.courseId] = [];
+          if (!map[item.courseId].includes(name)) {
+            map[item.courseId].push(name);
+          }
+        }
+      }
+      setCoordinators(map);
+    } catch {
+      // best-effort
+    }
+  }, [auth]);
 
   const reload = useCallback(async () => {
+    void reloadCoordinators();
     if (!auth.ready) return;
     if (auth.mock) {
       const role = auth.session?.role ?? "teacher";
@@ -158,9 +186,36 @@ export function CourseProvider({ children }: { children: ReactNode }) {
     [auth.mock, auth.session?.role, reload],
   );
 
+  const selectedCoordinators = useMemo(() => {
+    if (!selected) return [];
+    return coordinators[selected.id] ?? [];
+  }, [coordinators, selected]);
+
   const value = useMemo<CourseApi>(
-    () => ({ courses, selected, ready, error, selectCourse, reload, createCourse, updateCourse }),
-    [courses, selected, ready, error, selectCourse, reload, createCourse, updateCourse],
+    () => ({
+      courses,
+      selected,
+      ready,
+      error,
+      selectCourse,
+      reload,
+      createCourse,
+      updateCourse,
+      coordinators,
+      selectedCoordinators,
+    }),
+    [
+      courses,
+      selected,
+      ready,
+      error,
+      selectCourse,
+      reload,
+      createCourse,
+      updateCourse,
+      coordinators,
+      selectedCoordinators,
+    ],
   );
 
   return <CourseContext.Provider value={value}>{children}</CourseContext.Provider>;
