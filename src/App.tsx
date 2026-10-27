@@ -6,7 +6,8 @@ import { DesignationsProvider } from "./designations";
 import { PeopleSection } from "./components/AccessPanels";
 import { CoursesPanel } from "./components/CoursesPanel";
 import { CourseSwitcher } from "./components/CourseSwitcher";
-import { AuthScreen, ChangePinDialog } from "./components/AuthScreen";
+import { SignIn } from "./components/SignIn";
+import { ChangePinDialog } from "./components/ChangePin";
 import { BatchEditor, FooterEditor, HeaderEditor, LibraryEditor, StructureEditor } from "./components/panels";
 import { GridEditor } from "./components/GridEditor";
 import { PreviewPane } from "./components/PreviewPane";
@@ -348,18 +349,10 @@ function Shell() {
         />
       ) : null}
       {showPin && auth.session ? (
-        <div className="modal-back" role="presentation" onMouseDown={() => setShowPin(false)}>
-          <div onMouseDown={(event) => event.stopPropagation()}>
-            <ChangePinDialog onClose={() => setShowPin(false)} />
-          </div>
-        </div>
+        <ChangePinDialog open={showPin} onClose={() => setShowPin(false)} />
       ) : null}
       {showAuthModal && !auth.session ? (
-        <div className="modal-back" role="presentation" onMouseDown={() => setShowAuthModal(false)}>
-          <div onMouseDown={(e) => e.stopPropagation()}>
-            <AuthScreen onClose={() => setShowAuthModal(false)} />
-          </div>
-        </div>
+        <SignIn />
       ) : null}
     </div>
   );
@@ -369,12 +362,12 @@ function Gate() {
   const auth = useAuth();
   if (!auth.ready) {
     return (
-      <div className="auth-shell">
-        <p className="auth-lead">Checking session…</p>
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-sm text-stone-500">Checking session…</p>
       </div>
     );
   }
-  if (auth.required && !auth.session) return <AuthScreen />;
+  if (auth.required && !auth.session) return <SignIn />;
   return (
     <DesignationsProvider>
       <Shell />

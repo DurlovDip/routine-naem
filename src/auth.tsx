@@ -18,22 +18,27 @@ import {
   mockSignInTeachers,
   mockSignOut,
   mockUpdateTeacher,
-  type DirectoryRow,
-  type SessionView,
+  type DirectoryRow as MockDirectoryRow,
+  type SessionView as MockSessionView,
 } from "./lib/mockAuth";
 import { mockAssignCourse, mockCourseAssignments } from "./lib/mockCourses";
 import {
+  canEditSchedule,
   effectiveRole,
   missingTeacherColumnNotice,
   pinError,
   syntheticEmail,
   todayIso,
+  type AppRole,
   type StoredRole,
 } from "./lib/roles";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 
 export const isAuthMock = import.meta.env.VITE_AUTH_MOCK === "true";
-export const authRequired = isAuthMock || import.meta.env.VITE_AUTH_REQUIRED === "true";
+export const authRequired = isAuthMock || import.meta.env.VITE_AUTH_REQUIRED === "true" || isSupabaseConfigured;
+
+export type SessionView = MockSessionView;
+export type DirectoryRow = MockDirectoryRow;
 
 type AuthValue = {
   required: boolean;
@@ -46,11 +51,7 @@ type AuthValue = {
   adminResetPin: (teacherId: string, newPin: string) => Promise<string | null>;
   signOut: () => Promise<void>;
   signInTeachers: () => Promise<{ id: string; name: string }[]>;
-  directory: () => Promise<{ rows: DirectoryRow[]; notice: string | null }>;
-  updateTeacher: (
-    teacherId: string,
-    patch: { name?: string; designation?: string },
-  ) => Promise<string | null>;
+  directory: () => Promise<DirectoryRow[] & { rows: DirectoryRow[]; notice: string | null }>;
   assignRole: (
     teacherId: string,
     role: Exclude<StoredRole, "super_admin">,
@@ -65,6 +66,14 @@ type AuthValue = {
     courseId: string | null,
   ) => Promise<string | null>;
   courseAssignments: () => Promise<CourseAssignment[]>;
+  loadDesignation: () => Promise<string>;
+  saveDesignation: (designation: string) => Promise<string | null>;
+  loadSignature: () => Promise<string | null>;
+  saveSignature: (signature: string | null) => Promise<string | null>;
+  updateTeacher: (
+    teacherId: string,
+    patch: { name?: string; designation?: string },
+  ) => Promise<string | null>;
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -211,7 +220,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!email) return `Sign-in did not return an account. Run ${PIN_MIGRATION} in the Supabase SQL editor.`;
       const { error } = await supabase.auth.signInWithPassword({ email, password: pin });
       if (error) return pinMigrationHint(error.message);
-      setSession(await readSupabaseSession());
+      const nextSession = await readSupabaseSession();
+      setSession(nextSession);
       return null;
     } catch (err) {
       return err instanceof Error ? err.message : String(err);
@@ -276,55 +286,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const directory = useCallback(async () => {
-    if (isAuthMock) return { rows: mockDirectory(), notice: null };
-    if (!supabase) return { rows: [], notice: "Supabase is not configured." };
+    let rawRows: DirectoryRow[] = [];
+    let noticeText: string | null = null;
 
-    const columns = "id, name, username, role, role_start, role_end, auth_user_id, designation";
-    const full = await supabase.from("teachers").select(columns).order("name");
-    if (!full.error) {
-      const rows = accountTeacherRows((full.data ?? []) as TeacherAccountRow[]);
-      return {
-        rows,
-        notice: rows.length
+    if (isAuthMock) {
+      rawRows = mockDirectory();
+    } else if (!supabase) {
+      rawRows = [];
+      noticeText = "Supabase is not configured.";
+    } else {
+      const columns = "id, name, username, role, role_start, role_end, auth_user_id, designation";
+      const full = await supabase.from("teachers").select(columns).order("name");
+      if (!full.error) {
+        rawRows = accountTeacherRows((full.data ?? []) as TeacherAccountRow[]);
+        noticeText = rawRows.length
           ? null
-          : "The teachers table returned no rows for this login. Authenticated users can read it. The editor is still using the teachers saved in the schedule.",
-      };
-    }
-
-    const missingDesignation = /designation/i.test(full.error.message) && /does not exist|42703|schema cache/i.test(full.error.message);
-    if (missingDesignation) {
-      const withoutDesignation = await supabase
-        .from("teachers")
-        .select("id, name, username, role, role_start, role_end, auth_user_id")
-        .order("name");
-      if (!withoutDesignation.error) {
-        const rows = accountTeacherRows((withoutDesignation.data ?? []) as TeacherAccountRow[]);
-        return {
-          rows,
-          notice: rows.length
-            ? null
-            : "The teachers table returned no rows for this login. Authenticated users can read it. The editor is still using the teachers saved in the schedule.",
-        };
+          : "The teachers table returned no rows for this login. Authenticated users can read it. The editor is still using the teachers saved in the schedule.";
+      } else {
+        const missingDesignation =
+          /designation/i.test(full.error.message) &&
+          /does not exist|42703|schema cache/i.test(full.error.message);
+        if (missingDesignation) {
+          const withoutDesignation = await supabase
+            .from("teachers")
+            .select("id, name, username, role, role_start, role_end, auth_user_id")
+            .order("name");
+          if (!withoutDesignation.error) {
+            rawRows = accountTeacherRows((withoutDesignation.data ?? []) as TeacherAccountRow[]);
+            noticeText = rawRows.length
+              ? null
+              : "The teachers table returned no rows for this login. Authenticated users can read it. The editor is still using the teachers saved in the schedule.";
+          } else {
+            noticeText =
+              missingTeacherColumnNotice(withoutDesignation.error.message) ??
+              withoutDesignation.error.message;
+          }
+        } else {
+          const names = await supabase.from("teachers").select("id, name").order("name");
+          if (!names.error && names.data?.length) {
+            rawRows = basicTeacherRows(names.data);
+            noticeText = missingTeacherColumnNotice(full.error.message) ?? full.error.message;
+          } else {
+            noticeText = [
+              missingTeacherColumnNotice(full.error.message) ?? full.error.message,
+              names.error?.message,
+            ]
+              .filter(Boolean)
+              .join(" ");
+          }
+        }
       }
-      return {
-        rows: [],
-        notice: missingTeacherColumnNotice(withoutDesignation.error.message) ?? withoutDesignation.error.message,
-      };
     }
 
-    const names = await supabase.from("teachers").select("id, name").order("name");
-    if (!names.error && names.data?.length) {
-      return {
-        rows: basicTeacherRows(names.data),
-        notice: missingTeacherColumnNotice(full.error.message) ?? full.error.message,
-      };
-    }
-    return {
-      rows: [],
-      notice: [missingTeacherColumnNotice(full.error.message) ?? full.error.message, names.error?.message]
-        .filter(Boolean)
-        .join(" "),
-    };
+    const dual: any = [...rawRows];
+    dual.rows = rawRows;
+    dual.notice = noticeText;
+    return dual as DirectoryRow[] & { rows: DirectoryRow[]; notice: string | null };
   }, []);
 
   const updateTeacher = useCallback(
@@ -349,10 +366,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .update({ ...next, updated_at: new Date().toISOString() })
           .eq("id", teacherId)
           .select("id");
-        if (error && next.designation !== undefined && /designation/i.test(error.message) && /does not exist|42703/i.test(error.message)) {
+        if (
+          error &&
+          next.designation !== undefined &&
+          /designation/i.test(error.message) &&
+          /does not exist|42703/i.test(error.message)
+        ) {
           const retry = await supabase
             .from("teachers")
-            .update({ ...(next.name ? { name: next.name } : {}), updated_at: new Date().toISOString() })
+            .update({
+              ...(next.name ? { name: next.name } : {}),
+              updated_at: new Date().toISOString(),
+            })
             .eq("id", teacherId)
             .select("id");
           if (next.name && !retry.error) {
@@ -385,7 +410,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return {
         teacherId: record.teacher_id,
         courseId: record.course_id,
-        role: record.role === "temp_coordinator" ? "temp_coordinator" as const : "coordinator" as const,
+        role: record.role === "temp_coordinator" ? ("temp_coordinator" as const) : ("coordinator" as const),
         roleStart: String(record.role_start).slice(0, 10),
         roleEnd: String(record.role_end).slice(0, 10),
       };
@@ -406,8 +431,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const today = todayIso();
           const mine = mockCourseAssignments().filter((row) => row.teacherId === teacherId);
           const current = mine.find((row) => row.roleStart <= today && today <= row.roleEnd);
-          const future = mine.filter((row) => row.roleStart > today).sort((a, b) => a.roleStart.localeCompare(b.roleStart))[0];
-          const past = mine.filter((row) => row.roleEnd < today).sort((a, b) => b.roleEnd.localeCompare(a.roleEnd))[0];
+          const future = mine
+            .filter((row) => row.roleStart > today)
+            .sort((a, b) => a.roleStart.localeCompare(b.roleStart))[0];
+          const past = mine
+            .filter((row) => row.roleEnd < today)
+            .sort((a, b) => b.roleEnd.localeCompare(a.roleEnd))[0];
           const summary = current ?? future ?? past;
           if (summary) mockAssignRole(teacherId, summary.role, summary.roleStart, summary.roleEnd);
           else mockAssignRole(teacherId, "teacher", null, null);
@@ -460,6 +489,88 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const loadDesignation = useCallback(async () => {
+    if (isAuthMock || !session) return "Assistant Director";
+    if (!supabase) return "";
+    const { data, error } = await supabase
+      .from("teachers")
+      .select("designation")
+      .eq("id", session.teacherId)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return typeof data?.designation === "string" ? data.designation : "";
+  }, [session]);
+
+  const saveDesignation = useCallback(
+    async (designation: string) => {
+      if (isAuthMock) return null;
+      if (!supabase) return "Supabase is not configured.";
+      const trimmed = designation.trim();
+      const { error } = await supabase.rpc("set_my_designation", { next_designation: trimmed });
+      if (!error) return null;
+      if (session?.teacherId) {
+        const { error: directError } = await supabase
+          .from("teachers")
+          .update({ designation: trimmed })
+          .eq("id", session.teacherId);
+        if (!directError) return null;
+      }
+      return error.message;
+    },
+    [session?.teacherId],
+  );
+
+  const loadSignature = useCallback(async () => {
+    if (isAuthMock || !session?.teacherId) return null;
+    try {
+      const cached = localStorage.getItem(`@teacher_sig_${session.teacherId}`);
+      if (cached) return cached;
+    } catch {
+      // ignore
+    }
+    if (!supabase) return null;
+    try {
+      const { data, error } = await supabase
+        .from("teachers")
+        .select("signature")
+        .eq("id", session.teacherId)
+        .maybeSingle();
+      if (!error && typeof data?.signature === "string" && data.signature) {
+        return data.signature;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }, [session?.teacherId]);
+
+  const saveSignature = useCallback(
+    async (signature: string | null) => {
+      if (isAuthMock) return null;
+      if (!session?.teacherId) return "Not signed in";
+      try {
+        if (signature) {
+          localStorage.setItem(`@teacher_sig_${session.teacherId}`, signature);
+        } else {
+          localStorage.removeItem(`@teacher_sig_${session.teacherId}`);
+        }
+      } catch {
+        // ignore
+      }
+      if (!supabase) return null;
+      try {
+        await supabase
+          .from("teachers")
+          .update({ signature })
+          .eq("id", session.teacherId);
+      } catch {
+        // ignore
+      }
+      return null;
+    },
+    [session?.teacherId],
+  );
+
   const value = useMemo<AuthValue>(
     () => ({
       required: authRequired,
@@ -477,8 +588,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       assignRole,
       assignCourseRole,
       courseAssignments,
+      loadDesignation,
+      saveDesignation,
+      loadSignature,
+      saveSignature,
     }),
-    [ready, session, notice, signIn, changePin, adminResetPin, signOut, signInTeachers, directory, updateTeacher, assignRole, assignCourseRole, courseAssignments],
+    [
+      ready,
+      session,
+      notice,
+      signIn,
+      changePin,
+      adminResetPin,
+      signOut,
+      signInTeachers,
+      directory,
+      updateTeacher,
+      assignRole,
+      assignCourseRole,
+      courseAssignments,
+      loadDesignation,
+      saveDesignation,
+      loadSignature,
+      saveSignature,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -488,4 +621,15 @@ export function useAuth(): AuthValue {
   const value = useContext(AuthContext);
   if (!value) throw new Error("useAuth must be used inside AuthProvider");
   return value;
+}
+
+export function useAccess() {
+  const { session } = useAuth();
+  const role: AppRole | null = session?.role ?? null;
+  return {
+    role,
+    canEdit: canEditSchedule(role),
+    canAdmin: role === "super_admin",
+    cloudSession: Boolean(session),
+  };
 }
