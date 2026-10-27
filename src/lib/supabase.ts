@@ -169,11 +169,6 @@ export async function fetchRemoteSchedule(): Promise<AppState | null> {
   return result.state;
 }
 
-async function deleteMissingTeachers(_teachers: Teacher[]) {
-  // Institutional teachers are directory accounts managed via admin RPCs and must never be deleted by a routine save.
-  return;
-}
-
 async function deleteMissingModules(modules: ModuleEntry[]) {
   if (!supabase || modules.length === 0) return;
   const { data: remoteRows, error } = await supabase.from(MODULES_TABLE).select("id");
