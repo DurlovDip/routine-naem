@@ -2,18 +2,33 @@
 
 :root {
   color-scheme: light;
-  --ink: #1a1a18;
-  --muted: #6d6d68;
-  --line: #e4e4e0;
-  --paper: #f6f6f4;
-  --desk: #f3f3f1;
+  --ink: #1c1c1a;
+  --muted: #6e6e67;
+  --line: #eceae4;
+  --paper: #f3f2ee;
+  --desk: #f6f5f2;
   --surface: #ffffff;
-  --accent: #3f5c4e;
-  --accent-dark: #2e453a;
-  --accent-soft: #eef2ef;
+  --accent: #2c6b58;
+  --accent-dark: #1e4c3e;
+  --accent-soft: #e6f2ed;
   --warn: #8a5a00;
+  --warn-bg: #fbf6ee;
+  --danger: #8f3d3d;
+  --danger-bg: #f8ecec;
+  --shadow-color: rgba(28, 28, 26, 0.06);
+  --chip-past: #d9d6ce;
+  --chip-past-text: #5a5a54;
+  --chip-open-border: #ddd9d0;
+
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-pill: 9999px;
+
+  --shadow-card: 0 8px 18px rgba(28, 28, 26, 0.06);
   --pine: var(--accent);
   --pine-dark: var(--accent-dark);
+
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
   font-synthesis: none;
 }
@@ -26,11 +41,48 @@ body {
   margin: 0;
   background: var(--desk);
   color: var(--ink);
+  -webkit-font-smoothing: antialiased;
 }
 
 button, input, textarea, select { font: inherit; color: inherit; }
 
 button { cursor: pointer; }
+
+/* Mobile-matched UI classes */
+.ui-button-primary {
+  background-color: var(--accent);
+  color: #ffffff;
+}
+.ui-button-primary:hover:not(:disabled) {
+  background-color: var(--accent-dark);
+}
+.ui-button-ghost {
+  background-color: var(--paper);
+  color: var(--ink);
+}
+.ui-button-ghost:hover:not(:disabled) {
+  background-color: var(--line);
+}
+.ui-button-danger {
+  background-color: var(--danger-bg);
+  color: var(--danger);
+}
+.ui-button-danger:hover:not(:disabled) {
+  opacity: 0.85;
+}
+.ui-button-quiet {
+  background-color: transparent;
+  color: var(--accent);
+}
+.ui-button-quiet:hover:not(:disabled) {
+  background-color: var(--accent-soft);
+}
+.ui-card {
+  background-color: var(--surface);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  box-shadow: var(--shadow-card);
+}
 
 .app {
   height: 100%;
