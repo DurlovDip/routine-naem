@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { AuthProvider, useAccess, useAuth } from "./auth";
 import { AppHeader } from "./components/AppHeader";
-import { CoursesPanel } from "./components/CoursesPanel";
-import { PeopleSection } from "./components/AccessPanels";
+import { ManageTab } from "./components/ManageTab";
 import { RoutineTab } from "./components/RoutineTab";
 import { EditorTab } from "./components/EditorTab";
 import { SignIn } from "./components/SignIn";
@@ -43,13 +42,7 @@ function MainLayout() {
       <main className="flex-1 pb-16 sm:pb-0 overflow-auto">
         {tab === "routine" && <RoutineTab />}
         {tab === "editor" && <EditorTab />}
-
-        {tab === "admin" && (
-          <div className="w-full max-w-4xl mx-auto p-4 sm:p-6 space-y-6">
-            <CoursesPanel />
-            <PeopleSection />
-          </div>
-        )}
+        {tab === "admin" && <ManageTab onOpenRoutine={() => setTab("routine")} />}
 
         {tab === "tools" && (
           <div className="w-full max-w-3xl mx-auto p-6 sm:p-10 text-center">

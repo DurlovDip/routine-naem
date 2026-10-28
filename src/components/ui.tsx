@@ -91,14 +91,16 @@ export function hintStyle(): CSSProperties {
    Field (supports both direct input control & label wrapper)
    ========================================================================== */
 
-export interface FieldProps extends InputHTMLAttributes<HTMLInputElement> {
+export interface FieldProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "onChange"> {
   label?: string;
   hint?: string;
   children?: ReactNode;
+  onChangeText?: (text: string) => void;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 export const Field = forwardRef<HTMLInputElement, FieldProps>(function Field(
-  { label, hint, children, className, style, ...inputProps },
+  { label, hint, children, className, style, onChangeText, onChange, ...inputProps },
   ref
 ) {
   // If children are passed, act as a labeled container
@@ -111,6 +113,11 @@ export const Field = forwardRef<HTMLInputElement, FieldProps>(function Field(
       </label>
     );
   }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange?.(e);
+    onChangeText?.(e.target.value);
+  };
 
   // Otherwise, render an input
   const inputEl = (
@@ -128,6 +135,7 @@ export const Field = forwardRef<HTMLInputElement, FieldProps>(function Field(
         outline: "none",
         ...style,
       }}
+      onChange={handleChange}
       {...inputProps}
     />
   );
