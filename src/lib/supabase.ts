@@ -20,7 +20,10 @@ export const isSupabaseConfigured = Boolean(
     supabaseAnonKey.length > 10,
 );
 
-export const supabase: SupabaseClient | null = isSupabaseConfigured
+// Mock auth (VITE_AUTH_MOCK=true) must never reach the live project, so no client exists in that mode.
+const isMockMode = import.meta.env.VITE_AUTH_MOCK === "true";
+
+export const supabase: SupabaseClient | null = isSupabaseConfigured && !isMockMode
   ? createClient(supabaseUrl!, supabaseAnonKey!, {
       auth: {
         persistSession: true,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useAccess, useAuth, type DirectoryRow } from "../auth";
+import { isAuthMock, useAccess, useAuth, type DirectoryRow } from "../auth";
 import { addModuleEntry, withModules } from "../catalog";
 import { CoursesPanel } from "./CoursesPanel";
 import { useDesignations } from "../designations";
@@ -83,7 +83,7 @@ function ModulesPanel() {
         : item,
     );
     dispatch({ type: "replace", state: withModules(state, modules) });
-    if (supabase) {
+    if (supabase && !isAuthMock) {
       try {
         void supabase
           .from("modules")
@@ -107,7 +107,7 @@ function ModulesPanel() {
         state.modules.filter((item) => item.id !== module.id),
       ),
     });
-    if (supabase) {
+    if (supabase && !isAuthMock) {
       try {
         void supabase.from("modules").delete().eq("id", module.id);
       } catch {
@@ -427,7 +427,7 @@ function TeachersPanel() {
       const finalPin = newPin.trim() || "6832";
 
       // 1. Insert into database
-      if (supabase) {
+      if (supabase && !isAuthMock) {
         try {
           await supabase.from("teachers").insert({
             id: teacherId,
@@ -605,7 +605,7 @@ function TeachersPanel() {
               designation: updatedDesignation,
             });
           }
-          if (supabase) {
+          if (supabase && !isAuthMock) {
             try {
               await supabase
                 .from("teachers")
@@ -620,7 +620,7 @@ function TeachersPanel() {
         onRemove={async () => {
           if (!editingTeacher) return;
           dispatch({ type: "remove-teacher", id: editingTeacher.teacherId });
-          if (supabase) {
+          if (supabase && !isAuthMock) {
             try {
               await supabase.from("teachers").delete().eq("id", editingTeacher.teacherId);
             } catch {
