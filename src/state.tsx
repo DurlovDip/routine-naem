@@ -17,6 +17,7 @@ import { createDemoState } from "./lib/demo";
 import { scheduleReducer, type Action } from "./lib/reducer";
 import { activeDay, scheduleContentChanged } from "./lib/schedule";
 import { loadState, saveState } from "./lib/storage";
+import { BUILTIN_DESIGNATIONS } from "./lib/designations";
 import {
   isSupabaseConfigured,
   loadRemoteSchedule,
@@ -31,10 +32,14 @@ export type Store = {
   state: AppState;
   dispatch: Dispatch<Action>;
   day: DayPlan;
+  hydrated: boolean;
   persistError: boolean;
   syncStatus: SyncStatus;
+  syncError: string | null;
+  designations: string[];
   lastSyncedAt: Date | null;
   refreshFromCloud: () => Promise<void>;
+  publishRoutine: () => Promise<boolean>;
 };
 
 const ScheduleContext = createContext<Store | null>(null);
@@ -52,10 +57,13 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   const canWriteCatalog = cloudOn && (!auth.required || auth.session?.role === "super_admin");
   const canRead = cloudOn && courses.ready && Boolean(target) && (!auth.required || Boolean(auth.session));
   const [state, dispatch] = useReducer(scheduleReducer, undefined, initialState);
+  const [hydrated] = useState(true);
   const [persistError, setPersistError] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(() =>
     cloudOn ? "connected" : "unconfigured",
   );
+  const [syncError, setSyncError] = useState<string | null>(null);
+  const [designations] = useState<string[]>([...BUILTIN_DESIGNATIONS]);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const day = activeDay(state);
   const skipCloudSave = useRef(false);
@@ -238,17 +246,40 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     setLastSyncedAt(new Date());
   }, [canRead]);
 
+  const publishRoutine = useCallback(async (): Promise<boolean> => {
+    const current = targetRef.current;
+    if (!current) return false;
+    lastSavedContentRef.current = stateRef.current;
+    const ok = await upsertRemoteSchedule(stateRef.current, {
+      catalogs: canWriteCatalog,
+      scheduleId: current.scheduleId,
+      courseId: current.courseId,
+    });
+    setSyncStatus(ok ? "connected" : "error");
+    if (ok) {
+      setSyncError(null);
+      setLastSyncedAt(new Date());
+    } else {
+      setSyncError("Failed to save schedule to cloud.");
+    }
+    return ok;
+  }, [canWriteCatalog]);
+
   const store = useMemo<Store>(
     () => ({
       state,
       dispatch,
       day,
+      hydrated,
       persistError,
       syncStatus,
+      syncError,
+      designations,
       lastSyncedAt,
       refreshFromCloud,
+      publishRoutine,
     }),
-    [state, day, persistError, syncStatus, lastSyncedAt, refreshFromCloud],
+    [state, day, hydrated, persistError, syncStatus, syncError, designations, lastSyncedAt, refreshFromCloud, publishRoutine],
   );
 
   return <ScheduleContext.Provider value={store}>{children}</ScheduleContext.Provider>;
