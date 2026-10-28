@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../src/auth";
-import { colors } from "../src/theme";
+import { card, colors, space, type } from "../src/theme";
 import { Button, Field, Label, Select, T } from "../src/ui";
 
 export default function SignInScreen() {
@@ -50,9 +50,12 @@ export default function SignInScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.desk }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView contentContainerStyle={{ flexGrow: 1, padding: 20, paddingTop: insets.top + 28, paddingBottom: insets.bottom + 24 }} keyboardShouldPersistTaps="handled">
-        <View style={card}>
-          <T weight="bold" style={{ fontSize: 22 }}>Daily Schedule</T>
-          <T style={{ color: colors.muted, marginTop: 6, marginBottom: 16, lineHeight: 20 }}>
+        <View style={{ ...card, gap: space.md }}>
+          <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }}>
+            <T weight="bold" style={{ color: colors.accent, fontSize: type.title }}>DS</T>
+          </View>
+          <T weight="bold" style={{ fontSize: type.display, letterSpacing: -0.4 }}>Daily Schedule</T>
+          <T style={{ color: colors.muted, lineHeight: 22 }}>
             Pick your name and enter your PIN.
           </T>
           {auth.setupError ? <T style={errorText}>{auth.setupError}</T> : null}
@@ -96,12 +99,4 @@ export default function SignInScreen() {
   );
 }
 
-const card = {
-  backgroundColor: colors.surface,
-  borderColor: colors.line,
-  borderWidth: 1,
-  borderRadius: 16,
-  padding: 18,
-} as const;
-
-const errorText = { color: colors.danger, marginTop: 10, fontSize: 13 } as const;
+const errorText = { color: colors.danger, fontSize: type.label } as const;

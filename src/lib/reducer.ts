@@ -10,7 +10,7 @@ import {
   sortModuleNumbers,
   sortSubNumbers,
 } from "./text";
-import { addDays, clampDuration, isClock, isIsoDate } from "./time";
+import { addDays, clampDuration, isClock, isIsoDate, todayInDhaka } from "./time";
 import type {
   AppState,
   Batch,
@@ -50,7 +50,7 @@ export type Action =
   | { type: "set-slot-duration"; dayId: string; slotId: string; durationMin: number }
   | { type: "set-break-label"; dayId: string; slotId: string; label: string }
   | { type: "insert-break"; dayId: string; index: number }
-  | { type: "add-batch" }
+  | { type: "add-batch"; id?: string; name?: string; count?: number }
   | { type: "remove-batch"; id: string }
   | { type: "move-batch"; id: string; dir: -1 | 1 }
   | { type: "rename-batch"; id: string; name: string }
@@ -74,7 +74,9 @@ export type Action =
   | { type: "duplicate-day"; dayId: string }
   | { type: "duplicate-day-to-end"; dayId: string }
   | { type: "new-day"; dayId: string }
-  | { type: "delete-day"; dayId: string };
+  | { type: "add-day"; dayId?: string; dayNumber?: number; date?: string }
+  | { type: "delete-day"; dayId: string }
+  | { type: "publish-day"; dayId?: string };
 
 function moveItem<T>(list: T[], index: number, dir: -1 | 1): T[] {
   const next = index + dir;
@@ -125,17 +127,89 @@ function nextManagers(batches: Batch[], current: Record<string, string[]>, rotat
   return managers;
 }
 
+function cascadeManagersForward(
+  days: DayPlan[],
+  startIndex: number,
+  batches: Batch[],
+  batchId?: string,
+): DayPlan[] {
+  const sourceDay = days[startIndex];
+  if (!sourceDay) return days;
+
+  const result = days.map((d) => ({ ...d, managers: { ...d.managers } }));
+  const sortedDays = [...result].sort((a, b) => a.dayNumber - b.dayNumber || a.date.localeCompare(b.date));
+  const sortedIdx = sortedDays.findIndex((d) => d.id === sourceDay.id);
+  if (sortedIdx < 0) return days;
+
+  const targetBatches = batchId ? batches.filter((b) => b.id === batchId) : batches;
+  for (let i = sortedIdx + 1; i < sortedDays.length; i += 1) {
+    const prevDay = sortedDays[i - 1];
+    const currDay = sortedDays[i];
+
+    for (const b of targetBatches) {
+      const prev = prevDay.managers[b.id] ?? [];
+      if (prev.length > 0) {
+        currDay.managers[b.id] = rotateIds(b.roster, prev);
+      }
+    }
+  }
+
+  const managersById = new Map(sortedDays.map((d) => [d.id, d.managers]));
+  return result.map((d) => ({ ...d, managers: managersById.get(d.id) ?? d.managers }));
+}
+
 function cloneDay(day: DayPlan, batches: Batch[], rotate: boolean, empty: boolean): DayPlan {
   const copy = structuredClone(day);
   copy.id = uid("day");
   copy.date = addDays(day.date, 1);
   copy.dayNumber = day.dayNumber + 1;
   copy.managers = nextManagers(batches, day.managers, rotate);
+  copy.isPublished = false;
+  copy.publishedAt = undefined;
+  copy.publishedSnapshot = undefined;
   if (empty) {
     copy.cells = {};
     copy.merges = [];
   }
   return copy;
+}
+
+export function createDaySnapshot(day: DayPlan): DayPlan {
+  const { publishedSnapshot, ...rest } = day;
+  return {
+    ...JSON.parse(JSON.stringify(rest)),
+    isPublished: true,
+    publishedAt: day.publishedAt ?? new Date().toISOString(),
+  };
+}
+
+function stableStringify(val: unknown): string {
+  if (val === null || typeof val !== "object") {
+    return JSON.stringify(val);
+  }
+  if (Array.isArray(val)) {
+    return `[${val.map(stableStringify).join(",")}]`;
+  }
+  const keys = Object.keys(val as Record<string, unknown>).sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify((val as Record<string, unknown>)[k])}`).join(",")}}`;
+}
+
+/**
+ * Checks whether the current draft day has unpublished modifications compared to its published snapshot.
+ */
+export function isDayDirty(day: DayPlan): boolean {
+  if (!day.isPublished || !day.publishedSnapshot) return true;
+  const snap = day.publishedSnapshot;
+  if (day.date !== snap.date) return true;
+  if (day.dayNumber !== snap.dayNumber) return true;
+  if (day.dayStart !== snap.dayStart) return true;
+  if (day.recapMin !== snap.recapMin) return true;
+  if (day.defaultSessionMin !== snap.defaultSessionMin) return true;
+  if (stableStringify(day.slots) !== stableStringify(snap.slots)) return true;
+  if (stableStringify(day.managers) !== stableStringify(snap.managers)) return true;
+  if (stableStringify(day.cells) !== stableStringify(snap.cells)) return true;
+  if (stableStringify(day.merges) !== stableStringify(snap.merges)) return true;
+  return false;
 }
 
 function insertDay(state: AppState, afterId: string, day: DayPlan): AppState {
@@ -238,8 +312,14 @@ export function scheduleReducer(state: AppState, action: Action): AppState {
           lines: state.footer.lines.filter((_, index) => index !== action.index),
         },
       };
-    case "set-auto-rotate":
-      return { ...state, autoRotate: action.value };
+    case "set-auto-rotate": {
+      let nextDays = state.days;
+      if (action.value && state.days.length > 1) {
+        const activeIdx = Math.max(0, state.days.findIndex((d) => d.id === state.activeDayId));
+        nextDays = cascadeManagersForward(state.days, activeIdx, state.batches);
+      }
+      return { ...state, autoRotate: action.value, days: nextDays };
+    }
     case "set-show-conflicts":
       return { ...state, showConflicts: action.value };
     case "set-active-day":
@@ -269,6 +349,30 @@ export function scheduleReducer(state: AppState, action: Action): AppState {
         }
         return { ...day, ...patch };
       });
+    case "publish-day": {
+      const targetDayId = action.dayId ?? state.activeDayId;
+      const now = new Date().toISOString();
+      const updatedDays = state.days.map((d) => {
+        if (d.id !== targetDayId) return d;
+        const snapshot = createDaySnapshot({
+          ...d,
+          isPublished: true,
+          publishedAt: now,
+        });
+        return {
+          ...d,
+          isPublished: true,
+          publishedAt: now,
+          publishedSnapshot: snapshot,
+        };
+      });
+      return {
+        ...state,
+        days: updatedDays,
+        isPublished: true,
+        publishedAt: now,
+      };
+    }
     case "add-session":
       return withDay(state, action.dayId, (day) => {
         if (sessionSlots(day.slots).length >= 10) return day;
@@ -320,15 +424,20 @@ export function scheduleReducer(state: AppState, action: Action): AppState {
       });
     case "add-batch": {
       const lastNum = state.batches.reduce((max, b) => {
-        const n = parseInt(b.id.replace(/\D/g, ""), 10);
-        return isNaN(n) ? max : Math.max(max, n);
+        const fromName = parseInt((b.name ?? "").replace(/\D/g, ""), 10);
+        const fromId = parseInt((b.id ?? "").replace(/\D/g, ""), 10);
+        const val = !isNaN(fromName) && fromName > 0 ? fromName : (!isNaN(fromId) && fromId > 0 ? fromId : 0);
+        return Math.max(max, val);
       }, 0);
       const nextNum = lastNum > 0 ? lastNum + 1 : state.batches.length + 1;
+      const newId = action.id ?? `batch-${nextNum}`;
+      const newName = action.name !== undefined ? action.name : "";
+      const studentCount = typeof action.count === "number" && action.count > 0 ? Math.max(1, Math.min(200, action.count)) : 40;
       const batch: Batch = {
-        id: `batch-${nextNum}`,
-        name: "", // by default blank
-        numberOfStudents: 40,
-        roster: rosterRange(1, 40),
+        id: newId,
+        name: newName,
+        numberOfStudents: studentCount,
+        roster: action.count ? rosterRange(1, studentCount) : rosterRange(1, 40),
       };
       return {
         ...state,
@@ -384,23 +493,39 @@ export function scheduleReducer(state: AppState, action: Action): AppState {
           },
         })),
       };
-    case "set-managers":
-      return withDay(state, action.dayId, (day) => ({
-        ...day,
-        managers: { ...day.managers, [action.batchId]: action.ids },
-      }));
-    case "copy-managers":
-      return withDay(state, action.dayId, (day) => {
-        const ids = day.managers[action.batchId] ?? [];
-        const managers = { ...day.managers };
-        for (const batch of state.batches) {
-          managers[batch.id] = orderedManagers(
-            batch.roster,
-            ids.filter((id) => batch.roster.includes(id)),
-          );
-        }
-        return { ...day, managers };
-      });
+    case "set-managers": {
+      const dayIndex = state.days.findIndex((d) => d.id === action.dayId);
+      if (dayIndex < 0) return state;
+      let nextDays = state.days.map((day) =>
+        day.id === action.dayId
+          ? { ...day, managers: { ...day.managers, [action.batchId]: action.ids } }
+          : day,
+      );
+      if (state.autoRotate) {
+        nextDays = cascadeManagersForward(nextDays, dayIndex, state.batches, action.batchId);
+      }
+      return { ...state, days: nextDays };
+    }
+    case "copy-managers": {
+      const dayIndex = state.days.findIndex((d) => d.id === action.dayId);
+      if (dayIndex < 0) return state;
+      const targetDay = state.days[dayIndex];
+      const ids = targetDay.managers[action.batchId] ?? [];
+      const managers = { ...targetDay.managers };
+      for (const batch of state.batches) {
+        managers[batch.id] = orderedManagers(
+          batch.roster,
+          ids.filter((id) => batch.roster.includes(id)),
+        );
+      }
+      let nextDays = state.days.map((day) =>
+        day.id === action.dayId ? { ...day, managers } : day,
+      );
+      if (state.autoRotate) {
+        nextDays = cascadeManagersForward(nextDays, dayIndex, state.batches);
+      }
+      return { ...state, days: nextDays };
+    }
     case "set-cell":
       return withDay(state, action.dayId, (day) => ({
         ...day,
@@ -515,6 +640,33 @@ export function scheduleReducer(state: AppState, action: Action): AppState {
       const newDay = cloneDay(day, state.batches, state.autoRotate, false);
       newDay.date = nextDate;
       newDay.dayNumber = maxDayNum + 1;
+      return {
+        ...state,
+        days: [...state.days, newDay],
+        activeDayId: newDay.id,
+      };
+    }
+    case "add-day": {
+      const refDay =
+        (action.dayId ? state.days.find((item) => item.id === action.dayId) : undefined) ??
+        state.days.find((item) => item.id === state.activeDayId) ??
+        state.days[state.days.length - 1] ??
+        state.days[0];
+      if (!refDay) return state;
+
+      const maxDayNum = Math.max(...state.days.map((d) => d.dayNumber), 0);
+      const maxDate = state.days.reduce((max, d) => (d.date > max ? d.date : max), refDay.date || todayInDhaka());
+      let nextDate = addDays(maxDate, 1);
+      while (state.days.some((d) => d.date === nextDate)) {
+        nextDate = addDays(nextDate, 1);
+      }
+      const newDay = cloneDay(refDay, state.batches, state.autoRotate, true);
+      newDay.date = action.date && isIsoDate(action.date) && !state.days.some((d) => d.date === action.date)
+        ? action.date
+        : nextDate;
+      newDay.dayNumber = action.dayNumber && Number.isFinite(action.dayNumber) && action.dayNumber >= 1 && !state.days.some((d) => d.dayNumber === action.dayNumber)
+        ? action.dayNumber
+        : maxDayNum + 1;
       return {
         ...state,
         days: [...state.days, newDay],

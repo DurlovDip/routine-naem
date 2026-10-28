@@ -1,14 +1,18 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, useCallback, useContext, useEffect, useReducer, useRef, useState, type Dispatch, type ReactNode } from "react";
 import { useAuth } from "./auth";
+import { useCourses } from "./courses";
 import { screenshotMode } from "./flags";
 import { createScreenshotState } from "./fixture";
+import { withCourseTitle } from "./lib/courses";
 import { createInitialState } from "./lib/demo";
+import { footerSigneePatch, signeeFromTeacher } from "./lib/footerDefaults";
 import { scheduleReducer, type Action } from "./lib/reducer";
-import { activeDay } from "./lib/schedule";
+import { activeDay, scheduleContentChanged } from "./lib/schedule";
 import { normalizeState } from "./lib/storage";
 import { BUILTIN_DESIGNATIONS } from "./lib/designations";
 import { loadRemoteSchedule, subscribeToRemoteSchedule, upsertRemoteSchedule, type RemoteLoad } from "./lib/supabase";
+import { formatSignatureDate, todayInDhaka } from "./lib/time";
 import type { AppState, DayPlan } from "./lib/types";
 
 const CACHE_KEY = "routine-naem-schedule-cache";
@@ -25,12 +29,17 @@ type Store = {
   designations: string[];
   lastSyncedAt: Date | null;
   refreshFromCloud: () => Promise<void>;
+  publishRoutine: () => Promise<boolean>;
 };
 
 const ScheduleContext = createContext<Store | null>(null);
 
 export function ScheduleProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
+  const courses = useCourses();
+  const target = courses.selected;
+  const targetRef = useRef(target);
+  targetRef.current = target;
   const [state, dispatch] = useReducer(
     scheduleReducer,
     undefined,
@@ -43,29 +52,42 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const skipCloudSave = useRef(false);
   const cloudReady = useRef(screenshotMode);
+  const signeeApplied = useRef(false);
+  const [scheduleReady, setScheduleReady] = useState(screenshotMode);
+  const [scheduleEpoch, setScheduleEpoch] = useState(0);
   const dirtyDuringLoad = useRef(false);
   const remoteApplied = useRef(false);
   const stateRef = useRef(state);
   const prevUser = useRef<string | null>(null);
   stateRef.current = state;
+  const lastSavedContentRef = useRef<AppState>(state);
 
   const role = auth.session?.role;
   const realSession = Boolean(auth.session);
-  const canWrite =
-    realSession && (role === "super_admin" || role === "coordinator" || role === "temp_coordinator");
+  const canWrite = realSession && Boolean(target?.canEdit) && !screenshotMode;
   const canWriteCatalog = realSession && role === "super_admin";
   const day = activeDay(state);
 
   useEffect(() => {
-    if (screenshotMode) return;
+    if (!screenshotMode || !courses.selected) return;
+    const name = courses.selected.name;
+    const current = stateRef.current.header.find((line) => line.style === "title")?.text;
+    if (current === name) return;
+    dispatch({ type: "replace", state: withCourseTitle(stateRef.current, name) });
+  }, [courses.selected]);
+
+  useEffect(() => {
+    if (screenshotMode || !target) return;
     let cancelled = false;
+    const key = `${CACHE_KEY}:${target.scheduleId}`;
     void (async () => {
       try {
-        const raw = await AsyncStorage.getItem(CACHE_KEY);
+        const raw = await AsyncStorage.getItem(key);
         if (cancelled || remoteApplied.current || !raw) return;
         const parsed = normalizeState(JSON.parse(raw));
         if (parsed) {
           skipCloudSave.current = true;
+          lastSavedContentRef.current = parsed;
           dispatch({ type: "replace", state: parsed });
         }
       } catch {
@@ -77,15 +99,58 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [target?.scheduleId]);
 
   useEffect(() => {
-    if (!hydrated || screenshotMode) return;
+    if (!hydrated || screenshotMode || !target) return;
+    const key = `${CACHE_KEY}:${target.scheduleId}`;
     const timer = setTimeout(() => {
-      void AsyncStorage.setItem(CACHE_KEY, JSON.stringify(state));
+      void AsyncStorage.setItem(key, JSON.stringify(state));
     }, 200);
     return () => clearTimeout(timer);
-  }, [state, hydrated]);
+  }, [state, hydrated, target]);
+
+  useEffect(() => {
+    signeeApplied.current = false;
+    if (!screenshotMode) setScheduleReady(false);
+  }, [auth.session?.userId, target?.scheduleId]);
+
+  useEffect(() => {
+    if (!hydrated || !scheduleReady || !canWrite || !auth.session || signeeApplied.current) return;
+    const session = auth.session;
+    signeeApplied.current = true;
+    let cancelled = false;
+    void (async () => {
+      const sig = await auth.loadSignature();
+      if (cancelled) return;
+      const signatureDate = target?.updatedAt
+        ? formatSignatureDate(target.updatedAt)
+        : formatSignatureDate(todayInDhaka());
+      const patch = footerSigneePatch(
+        stateRef.current.footer,
+        signeeFromTeacher(session, stateRef.current.teachers, {
+          signature: sig,
+          courseName: target?.name,
+          signatureDate,
+        }),
+      );
+      if (patch) dispatch({ type: "set-footer", patch });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    hydrated,
+    scheduleReady,
+    scheduleEpoch,
+    canWrite,
+    auth.session,
+    target?.name,
+    target?.updatedAt,
+    state.footer.name,
+    state.footer.designation,
+    state.teachers,
+  ]);
 
   useEffect(() => {
     const id = auth.session?.userId ?? null;
@@ -101,9 +166,17 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   }, [auth.session?.userId]);
 
   const applyRemote = useCallback((next: AppState) => {
+    const wasApplied = remoteApplied.current;
     remoteApplied.current = true;
     skipCloudSave.current = true;
-    dispatch({ type: "replace", state: next });
+    const currentActiveDayId = stateRef.current.activeDayId;
+    const keepLocal = wasApplied && next.days.some((d) => d.id === currentActiveDayId);
+    const resolvedActiveDayId = keepLocal
+      ? currentActiveDayId
+      : (next.days.find((d) => d.id === next.activeDayId)?.id ?? next.days[0]?.id ?? next.activeDayId);
+    const merged = { ...next, activeDayId: resolvedActiveDayId };
+    lastSavedContentRef.current = merged;
+    dispatch({ type: "replace", state: merged });
   }, []);
 
   const noteRemote = useCallback((remote: RemoteLoad) => {
@@ -121,7 +194,14 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   }, [applyRemote]);
 
   const publish = useCallback(async () => {
-    const result = await upsertRemoteSchedule(stateRef.current, { catalogs: canWriteCatalog });
+    const current = targetRef.current;
+    if (!current) return false;
+    lastSavedContentRef.current = stateRef.current;
+    const result = await upsertRemoteSchedule(stateRef.current, {
+      catalogs: canWriteCatalog,
+      scheduleId: current.scheduleId,
+      courseId: current.courseId,
+    });
     setSyncStatus(result.ok ? "connected" : "error");
     setSyncError(result.error);
     if (result.ok) setLastSyncedAt(new Date());
@@ -131,7 +211,8 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   const refreshFromCloud = useCallback(async () => {
     if (!realSession || screenshotMode) return;
     setSyncStatus("saving");
-    const remote = await loadRemoteSchedule();
+    const current = targetRef.current;
+    const remote = await loadRemoteSchedule(current ? { scheduleId: current.scheduleId, courseId: current.courseId } : undefined);
     if (remote.error && !remote.state) {
       setDesignations(remote.designations);
       setSyncError(remote.error);
@@ -142,19 +223,25 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
   }, [realSession, noteRemote]);
 
   useEffect(() => {
-    if (!hydrated || !auth.ready || !realSession || screenshotMode) return;
+    if (!hydrated || !auth.ready || !realSession || screenshotMode || !target) return;
     let mounted = true;
+    const scheduleId = target.scheduleId;
+    const courseId = target.courseId;
+    cloudReady.current = false;
     void (async () => {
       setSyncStatus("saving");
-      const remote = await loadRemoteSchedule();
+      const remote = await loadRemoteSchedule({ scheduleId, courseId });
+      if (!mounted || targetRef.current?.scheduleId !== scheduleId) return;
       if (!mounted) return;
       setDesignations(remote.designations);
       if (remote.error && !remote.state) {
         setSyncError(remote.error);
         setSyncStatus("error");
+        if (mounted) setScheduleReady(true);
         return;
       }
       cloudReady.current = true;
+      if (mounted) setScheduleReady(true);
       if (dirtyDuringLoad.current) {
         if (mounted) await publish();
         return;
@@ -175,7 +262,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       setSyncStatus("connected");
     })();
     const unsubscribe = subscribeToRemoteSchedule((remote) => {
-      if (!mounted || dirtyDuringLoad.current) return;
+      if (!mounted || dirtyDuringLoad.current || targetRef.current?.scheduleId !== scheduleId) return;
       setDesignations(remote.designations);
       if (remote.state) applyRemote(remote.state);
       if (remote.error || !remote.state) {
@@ -191,7 +278,7 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       mounted = false;
       unsubscribe?.();
     };
-  }, [hydrated, auth.ready, realSession, auth.session?.userId, canWrite, applyRemote, publish]);
+  }, [hydrated, auth.ready, realSession, auth.session?.userId, canWrite, applyRemote, publish, target?.scheduleId, target?.courseId]);
 
   const hydratedStateSeen = useRef(false);
   useEffect(() => {
@@ -200,7 +287,9 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       hydratedStateSeen.current = true;
       return;
     }
-    if (!cloudReady.current && canWrite) dirtyDuringLoad.current = true;
+    if (!cloudReady.current && canWrite && scheduleContentChanged(lastSavedContentRef.current, state)) {
+      dirtyDuringLoad.current = true;
+    }
   }, [state, hydrated, canWrite]);
 
   useEffect(() => {
@@ -210,16 +299,21 @@ export function ScheduleProvider({ children }: { children: ReactNode }) {
       skipCloudSave.current = false;
       return;
     }
+    if (!scheduleContentChanged(lastSavedContentRef.current, state)) {
+      return;
+    }
     dirtyDuringLoad.current = false;
+    const savingId = targetRef.current?.scheduleId;
     setSyncStatus("saving");
     const timer = setTimeout(() => {
+      if (targetRef.current?.scheduleId !== savingId) return;
       void publish();
     }, 600);
     return () => clearTimeout(timer);
-  }, [state, hydrated, canWrite, publish]);
+  }, [state, hydrated, canWrite, publish, target?.scheduleId]);
 
   return (
-    <ScheduleContext.Provider value={{ state, dispatch, day, hydrated, syncStatus, syncError, designations, lastSyncedAt, refreshFromCloud }}>
+    <ScheduleContext.Provider value={{ state, dispatch, day, hydrated, syncStatus, syncError, designations, lastSyncedAt, refreshFromCloud, publishRoutine: publish }}>
       {children}
     </ScheduleContext.Provider>
   );

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Modal, Pressable, View } from "react-native";
 import { useAuth } from "./auth";
-import { colors } from "./theme";
+import { card, colors, space, type } from "./theme";
 import { Button, Field, Label, T } from "./ui";
 
 export function ChangePinModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -38,8 +38,8 @@ export function ChangePinModal({ open, onClose }: { open: boolean; onClose: () =
   return (
     <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
       <View style={{ flex: 1, backgroundColor: "rgba(28, 24, 20, 0.45)", justifyContent: "center", padding: 20 }}>
-        <View style={card}>
-          <T weight="bold" style={{ fontSize: 20 }}>Change PIN</T>
+        <View style={{ ...card, gap: space.sm }}>
+          <T weight="semibold" style={{ fontSize: type.headline }}>Change PIN</T>
           <T style={{ color: colors.muted, marginTop: 6, marginBottom: 14, lineHeight: 20 }}>
             {auth.session ? `${auth.session.teacherName}. ` : ""}
             Use 4 digits. You stay signed in on this phone.
@@ -77,9 +77,3 @@ export function ChangePinModal({ open, onClose }: { open: boolean; onClose: () =
 function digits(value: string): string {
   return value.replace(/\D/g, "").slice(0, 4);
 }
-
-const card = {
-  backgroundColor: colors.surface,
-  borderRadius: 16,
-  padding: 18,
-} as const;

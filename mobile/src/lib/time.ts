@@ -64,6 +64,30 @@ export function isIsoDate(value: string): boolean {
   return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
 }
 
+/** Calendar date in Asia/Dhaka, YYYY-MM-DD. */
+export function todayInDhaka(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Dhaka",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+  return `${year}-${month}-${day}`;
+}
+
+export type DayWhen = "past" | "today" | "future" | "undated";
+
+/** Past, today, or future against a YYYY-MM-DD today. A missing or invalid date is undated. */
+export function dayWhen(iso: string, today: string): DayWhen {
+  if (!isIsoDate(iso) || !isIsoDate(today)) return "undated";
+  if (iso < today) return "past";
+  if (iso > today) return "future";
+  return "today";
+}
+
 export function isClock(value: string): boolean {
   return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
 }
@@ -80,7 +104,7 @@ export function clampDuration(value: number): number {
 export function toIsoDate(value: string): string {
   if (!value) return "";
   const trimmed = value.trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) return trimmed.slice(0, 10);
 
   const mFull = trimmed.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
   if (mFull) {
@@ -116,3 +140,37 @@ export function formatSignatureDate(value: string): string {
   return trimmed;
 }
 
+/**
+ * Formats an ISO timestamp for display, e.g. "Today, 10:45 PM" or "25/10/2026, 10:45 PM".
+ */
+export function formatLastUpdated(iso?: string | null): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+
+    let hours = d.getHours();
+    const minutes = String(d.getMinutes()).padStart(2, "0");
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12;
+    if (hours === 0) hours = 12;
+    const formattedHours = String(hours).padStart(2, "0");
+
+    const now = new Date();
+    const isToday =
+      d.getDate() === now.getDate() &&
+      d.getMonth() === now.getMonth() &&
+      d.getFullYear() === now.getFullYear();
+
+    if (isToday) {
+      return `Today, ${formattedHours}:${minutes} ${ampm}`;
+    }
+    return `${day}/${month}/${year}, ${formattedHours}:${minutes} ${ampm}`;
+  } catch {
+    return "";
+  }
+}

@@ -63,3 +63,7 @@ export function roleLabel(role: AppRole): string {
   if (role === "temp_coordinator") return "Temporary coordinator";
   return "Teacher";
 }
+
+export function canEditSchedule(role: AppRole | null): boolean {
+  return role === "super_admin" || role === "coordinator" || role === "temp_coordinator";
+}

@@ -1,6 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { screenshotMode } from "./flags";
+import type { CourseAssignment } from "./lib/courses";
 import { supabase } from "./lib/supabase";
-import { pinError, syntheticEmail, type AppRole, type StoredRole } from "./lib/roles";
+import { canEditSchedule, pinError, syntheticEmail, type AppRole, type StoredRole } from "./lib/roles";
 
 const PIN_MIGRATION = "supabase/migration_add_teacher_pin.sql";
 
@@ -19,6 +22,7 @@ export type SessionView = {
 export type DirectoryRow = {
   teacherId: string;
   teacherName: string;
+  designation?: string;
   username: string | null;
   storedRole: StoredRole;
   role: AppRole;
@@ -42,6 +46,18 @@ type AuthValue = {
     roleStart: string | null,
     roleEnd: string | null,
   ) => Promise<string | null>;
+  assignCourseRole: (
+    teacherId: string,
+    role: Exclude<StoredRole, "super_admin">,
+    roleStart: string | null,
+    roleEnd: string | null,
+    courseId: string | null,
+  ) => Promise<string | null>;
+  courseAssignments: () => Promise<CourseAssignment[]>;
+  loadDesignation: () => Promise<string>;
+  saveDesignation: (designation: string) => Promise<string | null>;
+  loadSignature: () => Promise<string | null>;
+  saveSignature: (signature: string | null) => Promise<string | null>;
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
@@ -66,41 +82,83 @@ function pinMigrationHint(message: string): string {
 }
 
 async function readSupabaseSession(): Promise<SessionView | null> {
-  const { data } = await supabase.auth.getSession();
-  const authSession = data.session;
-  if (!authSession) return null;
-  const [access, effective] = await Promise.all([supabase.rpc("my_access"), supabase.rpc("effective_role")]);
-  if (access.error) throw new Error(access.error.message);
-  const row = Array.isArray(access.data) ? access.data[0] : access.data;
-  if (!row) {
-    throw new Error("Signed in, but this teacher has no account row.");
+  try {
+    const { data } = await supabase.auth.getSession();
+    const authSession = data?.session;
+    if (!authSession) return null;
+    const [access, effective] = await Promise.all([
+      Promise.resolve(supabase.rpc("my_access")).catch((e: unknown) => ({ data: null, error: { message: e instanceof Error ? e.message : String(e) } })),
+      Promise.resolve(supabase.rpc("effective_role")).catch((e: unknown) => ({ data: null, error: { message: e instanceof Error ? e.message : String(e) } })),
+    ]);
+    if (access.error) {
+      console.warn("my_access error:", access.error.message);
+      return null;
+    }
+    const row = Array.isArray(access.data) ? access.data[0] : access.data;
+    if (!row) {
+      return null;
+    }
+    const record = row as {
+      username: string;
+      teacher_id: string;
+      teacher_name: string;
+      stored_role: string;
+      effective: string;
+      role_start: string | null;
+      role_end: string | null;
+    };
+    const rpcRole = !effective.error && typeof effective.data === "string" ? asRole(effective.data) : null;
+    return {
+      userId: authSession.user.id,
+      username: record.username,
+      email: authSession.user.email ?? syntheticEmail(record.username),
+      teacherId: record.teacher_id,
+      teacherName: record.teacher_name ?? record.teacher_id,
+      storedRole: asRole(record.stored_role),
+      role: rpcRole ?? asRole(record.effective),
+      roleStart: dateOrNull(record.role_start),
+      roleEnd: dateOrNull(record.role_end),
+    };
+  } catch (err) {
+    console.warn("readSupabaseSession network error:", err);
+    return null;
   }
-  const record = row as {
-    username: string;
-    teacher_id: string;
-    teacher_name: string;
-    stored_role: string;
-    effective: string;
-    role_start: string | null;
-    role_end: string | null;
-  };
-  const rpcRole = !effective.error && typeof effective.data === "string" ? asRole(effective.data) : null;
+}
+
+function screenshotSession(): SessionView {
+  const search = (globalThis as { location?: { search?: string } }).location?.search ?? "";
+  const role: AppRole = search.includes("role=teacher")
+    ? "teacher"
+    : search.includes("role=temp")
+      ? "temp_coordinator"
+      : search.includes("role=super")
+        ? "super_admin"
+        : "coordinator";
+  const dated = role === "coordinator" || role === "temp_coordinator";
+  const teacherName =
+    role === "super_admin"
+      ? "Super admin"
+      : role === "teacher"
+        ? "Teacher"
+        : role === "temp_coordinator"
+          ? "Temporary coordinator"
+          : "Dr. Litan Kanti Halder";
   return {
-    userId: authSession.user.id,
-    username: record.username,
-    email: authSession.user.email ?? syntheticEmail(record.username),
-    teacherId: record.teacher_id,
-    teacherName: record.teacher_name ?? record.teacher_id,
-    storedRole: asRole(record.stored_role),
-    role: rpcRole ?? asRole(record.effective),
-    roleStart: dateOrNull(record.role_start),
-    roleEnd: dateOrNull(record.role_end),
+    userId: "screenshot",
+    username: role,
+    email: syntheticEmail(role),
+    teacherId: "screenshot",
+    teacherName,
+    role,
+    storedRole: role,
+    roleStart: dated ? "2026-01-01" : null,
+    roleEnd: dated ? "2026-12-31" : null,
   };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<SessionView | null>(null);
-  const [ready, setReady] = useState(false);
+  const [session, setSession] = useState<SessionView | null>(() => (screenshotMode ? screenshotSession() : null));
+  const [ready, setReady] = useState(screenshotMode);
   const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -116,6 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (screenshotMode) return;
     const { data } = supabase.auth.onAuthStateChange(() => {
       void refresh();
     });
@@ -148,6 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const problem = pinError(newPin);
     if (problem) return problem;
     if (oldPin === newPin) return "Choose a different PIN.";
+    if (screenshotMode) return null;
     const { error } = await supabase.rpc("change_pin", { old_pin: oldPin, new_pin: newPin });
     return error ? pinMigrationHint(error.message) : null;
   }, []);
@@ -160,7 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
+    if (!screenshotMode) await supabase.auth.signOut();
     setSession(null);
     setNotice(null);
   }, []);
@@ -181,6 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
       teacherId: String(row.teacher_id),
       teacherName: String(row.teacher_name),
+      designation: row.designation ? String(row.designation) : "",
       username: row.username ? String(row.username) : null,
       storedRole: asRole(row.stored_role),
       role: asRole(row.effective),
@@ -214,6 +275,118 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const courseAssignments = useCallback(async () => {
+    if (screenshotMode) return [];
+    const { data, error } = await supabase.rpc("list_course_assignments");
+    if (error) throw new Error(error.message);
+    return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+      teacherId: String(row.teacher_id),
+      courseId: String(row.course_id),
+      role: row.role === "temp_coordinator" ? "temp_coordinator" as const : "coordinator" as const,
+      roleStart: String(row.role_start).slice(0, 10),
+      roleEnd: String(row.role_end).slice(0, 10),
+    }));
+  }, []);
+
+  const assignCourseRole = useCallback(
+    async (
+      teacherId: string,
+      role: Exclude<StoredRole, "super_admin">,
+      roleStart: string | null,
+      roleEnd: string | null,
+      courseId: string | null,
+    ) => {
+      if (screenshotMode) return null;
+      const { error } = await supabase.rpc("assign_course_role", {
+        target_teacher: teacherId,
+        next_role: role,
+        start_on: roleStart,
+        end_on: roleEnd,
+        target_course: courseId,
+      });
+      if (!error) {
+        try {
+          setSession(await readSupabaseSession());
+        } catch {
+          // The directory reload still shows the saved role.
+        }
+      }
+      return error ? error.message : null;
+    },
+    [],
+  );
+
+  const loadDesignation = useCallback(async () => {
+    if (screenshotMode || !session) return "Assistant Director";
+    const { data, error } = await supabase.from("teachers").select("designation").eq("id", session.teacherId).maybeSingle();
+    if (error) throw new Error(error.message);
+    return typeof data?.designation === "string" ? data.designation : "";
+  }, [session]);
+
+  const saveDesignation = useCallback(async (designation: string) => {
+    if (screenshotMode) return null;
+    const trimmed = designation.trim();
+    const { error } = await supabase.rpc("set_my_designation", { next_designation: trimmed });
+    if (!error) return null;
+    if (session?.teacherId) {
+      const { error: directError } = await supabase
+        .from("teachers")
+        .update({ designation: trimmed })
+        .eq("id", session.teacherId);
+      if (!directError) return null;
+    }
+    return error.message;
+  }, [session?.teacherId]);
+
+  const loadSignature = useCallback(async () => {
+    if (screenshotMode || !session?.teacherId) return null;
+    try {
+      const cached = await AsyncStorage.getItem(`@teacher_sig_${session.teacherId}`);
+      if (cached) return cached;
+    } catch {
+      // ignore
+    }
+    try {
+      const { data, error } = await supabase
+        .from("teachers")
+        .select("signature")
+        .eq("id", session.teacherId)
+        .maybeSingle();
+      if (!error && typeof data?.signature === "string" && data.signature) {
+        return data.signature;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  }, [session?.teacherId]);
+
+  const saveSignature = useCallback(
+    async (signature: string | null) => {
+      if (screenshotMode) return null;
+      if (!session?.teacherId) return "Not signed in";
+      try {
+        if (signature) {
+          await AsyncStorage.setItem(`@teacher_sig_${session.teacherId}`, signature);
+        } else {
+          await AsyncStorage.removeItem(`@teacher_sig_${session.teacherId}`);
+        }
+      } catch {
+        // ignore
+      }
+      try {
+        await supabase
+          .from("teachers")
+          .update({ signature })
+          .eq("id", session.teacherId);
+      } catch {
+        // ignore
+      }
+      return null;
+    },
+    [session?.teacherId],
+  );
+
   const value = useMemo<AuthValue>(
     () => ({
       ready,
@@ -226,8 +399,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signInTeachers,
       directory,
       assignRole,
+      assignCourseRole,
+      courseAssignments,
+      loadDesignation,
+      saveDesignation,
+      loadSignature,
+      saveSignature,
     }),
-    [ready, session, notice, signIn, changePin, adminResetPin, signOut, signInTeachers, directory, assignRole],
+    [ready, session, notice, signIn, changePin, adminResetPin, signOut, signInTeachers, directory, assignRole, assignCourseRole, courseAssignments, loadDesignation, saveDesignation, loadSignature, saveSignature],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -244,7 +423,7 @@ export function useAccess() {
   const role = session?.role ?? null;
   return {
     role,
-    canEdit: role === "super_admin" || role === "coordinator" || role === "temp_coordinator",
+    canEdit: canEditSchedule(role),
     canAdmin: role === "super_admin",
     cloudSession: Boolean(session),
   };

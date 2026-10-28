@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { ActivityIndicator, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider } from "../src/auth";
+import { CourseProvider } from "../src/courses";
 import { ScheduleProvider } from "../src/store";
 import { colors } from "../src/theme";
 import { markFontsReady } from "../src/ui";
@@ -29,10 +30,12 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <ScheduleProvider>
-          <StatusBar style="dark" />
-          <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.desk } }} />
-        </ScheduleProvider>
+        <CourseProvider>
+          <ScheduleProvider>
+            <StatusBar style="dark" />
+            <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.desk } }} />
+          </ScheduleProvider>
+        </CourseProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );

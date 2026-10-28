@@ -1,6 +1,12 @@
-import { formatModule } from "./text";
+import {
+  formatModule,
+  normalizeModuleNumber,
+  normalizeSubNumber,
+  parseModuleCode,
+  sortSubNumbers,
+} from "./text";
 import { parseTime } from "./time";
-import type { Batch, CellContent, DayPlan, Merge, Slot } from "./types";
+import type { AppState, Batch, CellContent, DayPlan, Merge, Slot } from "./types";
 
 export type Timed = { start: number; end: number };
 
@@ -229,4 +235,115 @@ export function cellHasConflict(
 
 export function activeDay(state: { days: DayPlan[]; activeDayId: string }): DayPlan {
   return state.days.find((day) => day.id === state.activeDayId) ?? state.days[0];
+}
+
+export function scheduleContentChanged(prev: AppState | null | undefined, next: AppState): boolean {
+  if (!prev) return true;
+  if (prev === next) return false;
+  return (
+    prev.days !== next.days ||
+    prev.batches !== next.batches ||
+    prev.teachers !== next.teachers ||
+    prev.modules !== next.modules ||
+    prev.header !== next.header ||
+    prev.footer !== next.footer ||
+    prev.recapLabel !== next.recapLabel ||
+    prev.autoRotate !== next.autoRotate ||
+    prev.showConflicts !== next.showConflicts ||
+    prev.moduleNumbers !== next.moduleNumbers ||
+    prev.subNumbers !== next.subNumbers
+  );
+}
+
+export function existingSubNumbersForModule(
+  modules: { code?: string; moduleNumber?: string; moduleSubnumber?: string }[],
+  moduleNumber: string,
+): string[] {
+  const major = normalizeModuleNumber(moduleNumber);
+  if (!major) return [];
+  const subs: string[] = [];
+  for (const m of modules) {
+    let mMajor = "";
+    let mSub = "";
+    if (m.code) {
+      const parsed = parseModuleCode(m.code);
+      if (parsed) {
+        mMajor = normalizeModuleNumber(parsed.moduleNumber);
+        mSub = parsed.subNumber;
+      }
+    }
+    if (!mMajor && m.moduleNumber) {
+      mMajor = normalizeModuleNumber(m.moduleNumber);
+    }
+    if (!mSub && m.moduleSubnumber) {
+      mSub = normalizeSubNumber(m.moduleSubnumber);
+    }
+    if (mMajor === major && mSub) {
+      subs.push(mSub);
+    }
+  }
+  return sortSubNumbers(subs);
+}
+
+export function availableSubNumbers({
+  state,
+  batchId,
+  currentDayId,
+  currentSessionId,
+  selectedModuleNumber,
+  currentCellCode,
+}: {
+  state: AppState;
+  batchId: string;
+  currentDayId: string;
+  currentSessionId: string;
+  selectedModuleNumber: string;
+  currentCellCode?: string;
+}): string[] {
+  const major = normalizeModuleNumber(selectedModuleNumber);
+  if (!major) return [];
+
+  const catalogSubs = existingSubNumbersForModule(state.modules ?? [], major);
+  const candidates = catalogSubs.length > 0 ? catalogSubs : (state.subNumbers ?? []);
+
+  // Collect taken sub-numbers for this batch across all days in the course
+  const taken = new Set<string>();
+  for (const day of state.days ?? []) {
+    const isCurrentDay = day.id === currentDayId;
+    const cells = rowCells(day, batchId);
+    for (const cell of cells) {
+      if (cell.kind !== "session") continue;
+      if (
+        isCurrentDay &&
+        (cell.anchorId === currentSessionId || cell.sessionIds.includes(currentSessionId))
+      ) {
+        continue;
+      }
+      if (!cell.content?.code) continue;
+      const parsed = parseModuleCode(cell.content.code);
+      if (!parsed) continue;
+      if (normalizeModuleNumber(parsed.moduleNumber) === major && parsed.subNumber) {
+        taken.add(normalizeSubNumber(parsed.subNumber));
+      }
+    }
+  }
+
+  const available = candidates.filter((sub) => !taken.has(normalizeSubNumber(sub)));
+
+  // If the cell being edited is already assigned to this module number, preserve its current sub-number
+  if (currentCellCode) {
+    const parsedCurrent = parseModuleCode(currentCellCode);
+    if (
+      parsedCurrent &&
+      normalizeModuleNumber(parsedCurrent.moduleNumber) === major &&
+      parsedCurrent.subNumber
+    ) {
+      const currentSub = normalizeSubNumber(parsedCurrent.subNumber);
+      if (!available.includes(currentSub)) {
+        available.unshift(currentSub);
+      }
+    }
+  }
+
+  return sortSubNumbers(available);
 }

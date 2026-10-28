@@ -4,9 +4,10 @@
 -- those rows are missing. Re-running does not rename teachers, blank batch
 -- names, or replace an existing schedule.
 --
--- Do not run this on the live project. It is not the PIN migration.
--- For a new project, run supabase/whole.sql. To hide PINs on the live
--- project, run supabase/lock_teacher_pin.sql.
+-- Do not run this on the live project. It is not the courses migration.
+-- For a new project, run supabase/whole.sql. On the live project, run
+-- supabase/migration_courses.sql once. lock_teacher_pin.sql is the PIN-only
+-- script.
 -- ========================================================================
 
 -- 1. Ensure Relational Tables Exist
@@ -67,54 +68,148 @@ end $$;
 
 
 -- 3. Seed Teachers Table
-insert into public.teachers (id, name) values
-  ('teacher-1', 'Prof. Asisul'),
-  ('teacher-2', 'Md. Sazzad Ali'),
-  ('teacher-3', 'Muhammad Yeakub Ali'),
-  ('teacher-4', 'Mst. Arifa Tazrimin'),
-  ('teacher-5', 'Md. Jahangir Alom'),
-  ('teacher-6', 'Prof. Rukhshana'),
-  ('teacher-7', 'Prof. Nilufar'),
-  ('teacher-8', 'Ms. Ayesa'),
-  ('teacher-9', 'Mr. S. Mahbub'),
-  ('teacher-10', 'Dr. Rahman'),
-  ('teacher-11', 'Mr. M. Ali'),
-  ('teacher-12', 'Mr. Ariful'),
-  ('teacher-13', 'Dr. Nuruzzaman'),
-  ('teacher-14', 'Ms. Zinan'),
-  ('teacher-15', 'Ms. Arifa'),
-  ('teacher-16', 'Dr. Ayet'),
-  ('teacher-17', 'Dr. Litan Kanti Halder')
+insert into public.teachers (id, name, designation) values
+  ('teacher-1', 'Prof. Asisul', 'Training Specialist'),
+  ('teacher-2', 'Md. Sazzad Ali', 'Deputy Director'),
+  ('teacher-3', 'Muhammad Yeakub Ali', 'Assistant Professor'),
+  ('teacher-4', 'Mst. Arifa Tazrimin', 'Deputy Director (TS)'),
+  ('teacher-5', 'Md. Jahangir Alom', 'Lecturer'),
+  ('teacher-6', 'Prof. Rukhshana', 'Training Specialist'),
+  ('teacher-7', 'Prof. Nilufar', 'Training Specialist'),
+  ('teacher-8', 'Ms. Ayesa', 'Associate Professor'),
+  ('teacher-9', 'Mr. S. Mahbub', 'Training Specialist'),
+  ('teacher-10', 'Dr. Rahman', 'Director'),
+  ('teacher-11', 'Mr. M. Ali', 'Training Specialist'),
+  ('teacher-12', 'Mr. Ariful', 'Training Specialist'),
+  ('teacher-13', 'Dr. Nuruzzaman', 'Director'),
+  ('teacher-14', 'Ms. Zinan', 'Training Specialist'),
+  ('teacher-15', 'Ms. Arifa', 'Deputy Director (TS)'),
+  ('teacher-16', 'Dr. Ayet', 'Deputy Director'),
+  ('teacher-17', 'Dr. Litan Kanti Halder', 'Assistant Director'),
+  ('teacher-18', 'Dr. Musammet Tahmina Begum', 'Assistant Director'),
+  ('teacher-19', 'Nahida Akter', 'Technical Officer'),
+  ('teacher-20', 'Mohammed Amin Uddin', 'Technical Officer'),
+  ('teacher-21', 'Dr. Md. Atiqul Islam Pathan', 'Director'),
+  ('teacher-22', 'Dr. Saima Rahman', 'Deputy Director'),
+  ('teacher-23', 'Shahida Sultana', 'Assistant Director'),
+  ('teacher-24', 'Md. Rafiqul Islam Akand', 'Documentation Officer'),
+  ('teacher-25', 'Prof. Md. Jahangir Kabir', 'Assistant Director (TS)'),
+  ('teacher-26', 'Kazi Tanzila Jahan', 'Assistant Director'),
+  ('teacher-27', 'Golam Mahmud', 'Assistant Director'),
+  ('teacher-28', 'Sk. Saifur Rahman', 'Assistant Director'),
+  ('teacher-29', 'Swaraj Chakraborty', 'Assistant Director'),
+  ('teacher-30', 'Md. Ahsan Habib', 'Physical Instructor'),
+  ('teacher-31', 'Prof. Dr. Nasima Khan', 'Training Specialist'),
+  ('teacher-32', 'Prof. Asma Akter Khatun', 'Training Specialist'),
+  ('teacher-33', 'Prof. Monoara Khatun', 'Training Specialist'),
+  ('teacher-34', 'Prof. Rudaba Rahman', 'Training Specialist'),
+  ('teacher-35', 'Prof. Md. Shoukat Ali Khan', 'Training Specialist'),
+  ('teacher-36', 'Prof. Md. Sydur Rahman Kotowal', 'Training Specialist'),
+  ('teacher-37', 'Prof. Shamsun Akhter Siddiqie', 'Training Specialist'),
+  ('teacher-38', 'Prof. Dr. Anwarul Hoque', 'Training Specialist'),
+  ('teacher-39', 'Prof. Joy Prakash Dey', 'Training Specialist'),
+  ('teacher-40', 'Prof. Tapan Bhattacharjee', 'Training Specialist'),
+  ('teacher-41', 'Mohammad Arifur Rahman', 'Training Specialist'),
+  ('teacher-42', 'Mohammad Motiur Rahman khan Pathan', 'Training Specialist'),
+  ('teacher-43', 'Sharmin Tamanna', 'Training Specialist'),
+  ('teacher-44', 'Md. Rabiul Awal', 'Training Specialist'),
+  ('teacher-45', 'Mustafizur Rahaman', 'Training Specialist'),
+  ('teacher-46', 'Md. Manjurul Islam', 'Training Specialist'),
+  ('teacher-47', 'Md. Shahidul Islam', 'Deputy Director'),
+  ('teacher-48', 'Dr. Md. Arizul Islam Khan', 'Deputy Director'),
+  ('teacher-49', 'Mozammel Hoque', 'Assistant Director'),
+  ('teacher-50', 'Dr. Muhammad Abdur Rahman Miah', 'Assistant Director')
 on conflict (id) do nothing;
 
 
 -- 4. Seed Modules Table (id: integer, module_number, module_subnumber, module_name)
 insert into public.modules (id, module_number, module_subnumber, module_name) values
-  (1, '7', '04', 'Theory'),
-  (2, '7', '04', 'TPP (Theory & Practice)'),
-  (3, '7', '04', 'Practice & Presentation'),
-  (4, '1', '06', ''),
-  (5, '1', '08', ''),
-  (6, '3', '02', ''),
-  (7, '3', '05', ''),
-  (8, '5', '01', ''),
-  (9, '5', '06', ''),
-  (10, '6', '01', ''),
-  (11, '8', '03', ''),
-  (12, '8', '07', ''),
-  (13, '8', '08', ''),
-  (14, '8', '10', '')
+  (1, '1', '01', 'Learning Theories (Bloom''s and others)'),
+  (2, '1', '02', 'Managing the Learning Environment in the Classroom'),
+  (3, '1', '03', '21st Century Skills in Education'),
+  (4, '1', '04', 'Formulating Lesson Plan and Constructive Alignment'),
+  (5, '1', '05', 'Active Learning Strategies'),
+  (6, '1', '06', 'Assessment in Education'),
+  (7, '1', '07', 'Assessment Rubrics'),
+  (8, '1', '08', 'Teaching Practice/Micro Teaching'),
+  (9, '2', '01', 'Leadership: Concepts, Skills for Facilitating Change'),
+  (10, '2', '02', 'Leadership Models and their Implication in Education'),
+  (11, '2', '03', 'Nature and Dimensions of Strategic Leadership in Teaching'),
+  (12, '2', '04', 'Management: Conception, Functions and Styles'),
+  (13, '2', '05', 'Concept of Strategic Management and Practice'),
+  (14, '2', '06', 'Conflict Management and Negotiations'),
+  (15, '2', '07', 'Building a Strong Team: Staff Management in Educational Institutions'),
+  (16, '2', '08', 'SWOT Analysis and Decision Making in Institutions'),
+  (17, '2', '09', 'Ethics and Integrity in Action: Promoting Transparency and Accountability'),
+  (18, '3', '01', 'Introduction to ICT in Education and ICT Policy in Bangladesh'),
+  (19, '3', '02', 'Introduction to AI and Generative AI'),
+  (20, '3', '03', 'Artificial Intelligence in Education'),
+  (21, '3', '04', 'Modern Pedagogical Software in Classroom Management in Education'),
+  (22, '3', '05', 'Blended Learning through ICT'),
+  (23, '3', '06', 'D-Nothi'),
+  (24, '3', '07', 'Use of Social Media and Cyber Security'),
+  (25, '3', '08', 'Digital Content Preparation Using AI'),
+  (26, '4', '01', 'Overview of the Planning Process of Bangladesh'),
+  (27, '4', '02', 'Annual Development Program (ADP)'),
+  (28, '4', '03', 'Project: Concept, Classification, and Project Cycle'),
+  (29, '4', '04', 'Feasibility Study of Project with Financial, Economic Analysis, and EIA'),
+  (30, '4', '05', 'Project Design with Logical Framework Approach'),
+  (31, '4', '06', 'Development Project Proposal (DPP)'),
+  (32, '4', '07', 'Preparation of Development Project Proposal (DPP)'),
+  (33, '4', '08', 'Project Approval Process'),
+  (34, '4', '09', 'Monitoring, Evaluation, and Impact Analysis'),
+  (35, '5', '01', 'Understanding the Nature & Types of Research'),
+  (36, '5', '02', 'Action Research'),
+  (37, '5', '03', 'Research Tools Development and Data Collection Procedure'),
+  (38, '5', '04', 'Preparation of Research Report'),
+  (39, '5', '05', 'Referencing, Bibliography, Footnotes in Research'),
+  (40, '5', '06', 'How to Write a Research Proposal (Action Research)'),
+  (41, '6', '01', 'Understanding Good Governance in Education'),
+  (42, '6', '02', 'Office Procedure: Docketing, Filing, and Referencing'),
+  (43, '6', '03', 'Writing Notes, Summary, Reports, and Meeting Minutes'),
+  (44, '6', '04', 'Government Service Act 2018'),
+  (45, '6', '05', 'The Government Servant (Discipline and Appeal Rules, 2018)'),
+  (46, '6', '06', 'Performance Measurement and ACR Writing'),
+  (47, '6', '07', 'Strategies for Career Planning and Continuous Professional Development'),
+  (48, '6', '08', 'Administrative Tribunal'),
+  (49, '6', '09', 'Store and Resource Management'),
+  (50, '7', '01', 'General Financial Rules and Duties and Responsibilities of DDO'),
+  (51, '7', '02', 'Audit Management: Audit Procedures, Objectives, and Response Mechanisms'),
+  (52, '7', '03', 'Public Procurement Act 2006 and Public Procurement Rules 2025: Key Provisions, Schedules, and Recent Updates'),
+  (53, '7', '04', 'Different Types of Procurement based on PPA 2006 and PPR 2025'),
+  (54, '7', '05', 'Procurement Governance Structure: Committees, Stakeholders, and Assigned Responsibilities'),
+  (55, '7', '06', 'Introduction to the e-GP Portal: Registration Process and Functional Components'),
+  (56, '7', '07', 'Preparation and Submission of Tender Documents, Evaluation Process, and Electronic Contract Management Systems through e-GP (e-Tendering and e-CMS through e-GP)'),
+  (57, '7', '08', 'Mid-Term Budgetary Framework (MTBF): Concepts, Processes, and Institutional Application'),
+  (58, '8', '01', 'Education in Emergency'),
+  (59, '8', '02', 'Physical and Mental Well-being'),
+  (60, '8', '03', '4IR'),
+  (61, '8', '04', 'Gender Awareness'),
+  (62, '8', '05', 'Bangladesh National Qualifications Framework (BNQF)'),
+  (63, '8', '06', 'Global Citizenship Education'),
+  (64, '8', '07', 'Contagious and Non-contagious Diseases'),
+  (65, '8', '08', 'Green Growth in Education'),
+  (66, '8', '09', 'Higher Education Prospects and Communication'),
+  (67, '8', '10', 'Bullying and Cyber Bullying')
 on conflict (id) do nothing;
 
 
 -- 5. Seed Batches Table (id: number, name: default blank, number_of_students: 40)
-insert into public.batches (id, name, number_of_students) values
-  (9, '', 40),
-  (10, '', 40),
-  (11, '', 40),
-  (12, '', 40),
-  (13, '', 40)
-on conflict (id) do nothing;
+-- WHERE NOT EXISTS, not ON CONFLICT (id): courses change the primary key to
+-- (course_id, id). Rows that already exist are left alone.
+insert into public.batches (id, name, number_of_students)
+select batch.id, batch.name, batch.number_of_students
+from (
+  values
+    (9, '', 40),
+    (10, '', 40),
+    (11, '', 40),
+    (12, '', 40),
+    (13, '', 40)
+) as batch(id, name, number_of_students)
+where not exists (
+  select 1 from public.batches existing where existing.id = batch.id
+);
 
 -- Initial schedule document. Kept only when no default row exists yet.
 insert into public.schedules (id, data, updated_at)
