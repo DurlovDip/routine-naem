@@ -4,6 +4,7 @@ import { AppHeader } from "./components/AppHeader";
 import { ManageTab } from "./components/ManageTab";
 import { RoutineTab } from "./components/RoutineTab";
 import { EditorTab } from "./components/EditorTab";
+import { ToolsTab } from "./components/ToolsTab";
 import { SignIn } from "./components/SignIn";
 import { TabNav, type TabId } from "./components/TabNav";
 import { CourseProvider, useCourses } from "./courses";
@@ -43,25 +44,7 @@ function MainLayout() {
         {tab === "routine" && <RoutineTab />}
         {tab === "editor" && <EditorTab />}
         {tab === "admin" && <ManageTab onOpenRoutine={() => setTab("routine")} />}
-
-        {tab === "tools" && (
-          <div className="w-full max-w-3xl mx-auto p-6 sm:p-10 text-center">
-            <div
-              className="p-8 rounded-2xl border"
-              style={{
-                backgroundColor: colors.surface,
-                borderColor: colors.line,
-              }}
-            >
-              <h2 className="text-xl font-bold mb-2" style={{ color: colors.ink }}>
-                Tools
-              </h2>
-              <p className="text-sm" style={{ color: colors.muted }}>
-                Automatic schedule generation and routine utilities.
-              </p>
-            </div>
-          </div>
-        )}
+        {tab === "tools" && <ToolsTab onGoToEditor={() => setTab("editor")} />}
       </main>
     </div>
   );
