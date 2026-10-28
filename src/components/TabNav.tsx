@@ -50,7 +50,8 @@ export function TabNav({
       id: "tools",
       label: "Tools",
       icon: (color) => <Wrench size={20} color={color} />,
-      visible: true,
+      // Mirrors mobile/app/(main)/_layout.tsx, where the tools screen has `href: null` for every role.
+      visible: false,
     },
   ];
 

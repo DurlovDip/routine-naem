@@ -1,7 +1,6 @@
 import {
   Check,
   ChevronDown,
-  CircleUserRound,
   KeyRound,
   LogOut,
   X,
@@ -38,6 +37,18 @@ export function AppHeader() {
   const [coursesOpen, setCoursesOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [pinOpen, setPinOpen] = useState(false);
+
+  useEffect(() => {
+    if (!coursesOpen && !profileOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setCoursesOpen(false);
+      setProfileOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [coursesOpen, profileOpen]);
+
   const session = auth.session;
   const selected = courses.selected;
   const assignedCoordinator =
@@ -90,7 +101,10 @@ export function AppHeader() {
         className="w-10 h-10 flex items-center justify-center rounded-full cursor-pointer hover:opacity-85 transition-opacity flex-none"
         style={{ color: colors.ink }}
       >
-        <CircleUserRound size={32} />
+        {/* Ionicons "person-circle" (filled), the icon mobile/src/AppHeader.tsx uses. */}
+        <svg width={32} height={32} viewBox="0 0 512 512" fill="currentColor" aria-hidden="true">
+          <path d="M256 48C141.31 48 48 141.31 48 256s93.31 208 208 208 208-93.31 208-208S370.69 48 256 48m-50.22 116.82C218.45 151.39 236.28 144 256 144s37.39 7.44 50.11 20.94c12.89 13.68 19.16 32.06 17.68 51.82C320.83 256 290.43 288 256 288s-64.89-32-67.79-71.25c-1.47-19.92 4.79-38.36 17.57-51.93M256 432a175.5 175.5 0 0 1-126-53.22 122.9 122.9 0 0 1 35.14-33.44C190.63 329 222.89 320 256 320s65.37 9 90.83 25.34A122.9 122.9 0 0 1 382 378.78 175.45 175.45 0 0 1 256 432" />
+        </svg>
       </button>
 
       {/* Courses Modal */}

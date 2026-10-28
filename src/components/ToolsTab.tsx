@@ -121,7 +121,7 @@ export function ToolsTab({ onGoToEditor }: { onGoToEditor?: () => void }) {
   return (
     <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 py-4 space-y-6">
       {/* Title */}
-      <div>
+      <div className="flex flex-col">
         <T weight="bold" style={{ fontSize: 20, color: colors.ink }}>
           Routine Generator
         </T>
@@ -200,7 +200,7 @@ export function ToolsTab({ onGoToEditor }: { onGoToEditor?: () => void }) {
                 />
               </svg>
             </div>
-            <div>
+            <div className="flex flex-col">
               <T weight="bold" style={{ fontSize: 16, color: colors.ink }}>
                 1. Select Teachers Joining Today
               </T>
@@ -275,7 +275,7 @@ export function ToolsTab({ onGoToEditor }: { onGoToEditor?: () => void }) {
                       </svg>
                     )}
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 flex flex-col">
                     <T weight="semibold" style={{ fontSize: 14, color: colors.ink }}>
                       {teacher.name}
                     </T>
@@ -324,7 +324,7 @@ export function ToolsTab({ onGoToEditor }: { onGoToEditor?: () => void }) {
                 />
               </svg>
             </div>
-            <div>
+            <div className="flex flex-col">
               <T weight="bold" style={{ fontSize: 16, color: colors.ink }}>
                 2. When Are Teachers Free?
               </T>
@@ -358,7 +358,7 @@ export function ToolsTab({ onGoToEditor }: { onGoToEditor?: () => void }) {
                   }}
                 >
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="flex flex-col">
                       <T weight="bold" style={{ fontSize: 14, color: colors.ink }}>
                         {teacher.name}
                       </T>
@@ -462,7 +462,7 @@ export function ToolsTab({ onGoToEditor }: { onGoToEditor?: () => void }) {
                 />
               </svg>
             </div>
-            <div>
+            <div className="flex flex-col">
               <T weight="bold" style={{ fontSize: 16, color: colors.ink }}>
                 3. Generated Routine
               </T>
@@ -581,7 +581,7 @@ export function ToolsTab({ onGoToEditor }: { onGoToEditor?: () => void }) {
                 borderColor: colors.accent,
               }}
             >
-              <div>
+              <div className="flex flex-col">
                 <T weight="bold" style={{ fontSize: 14, color: colors.accentDark }}>
                   Routine Applied Successfully!
                 </T>
