@@ -20,7 +20,10 @@ export const isSupabaseConfigured = Boolean(
     supabaseAnonKey.length > 10,
 );
 
-export const supabase: SupabaseClient | null = isSupabaseConfigured
+// Mock auth (VITE_AUTH_MOCK=true) must never reach the live project, so no client exists in that mode.
+const isMockMode = import.meta.env.VITE_AUTH_MOCK === "true";
+
+export const supabase: SupabaseClient | null = isSupabaseConfigured && !isMockMode
   ? createClient(supabaseUrl!, supabaseAnonKey!, {
       auth: {
         persistSession: true,
@@ -167,11 +170,6 @@ export async function loadRemoteSchedule(
 export async function fetchRemoteSchedule(): Promise<AppState | null> {
   const result = await loadRemoteSchedule();
   return result.state;
-}
-
-async function deleteMissingTeachers(_teachers: Teacher[]) {
-  // Institutional teachers are directory accounts managed via admin RPCs and must never be deleted by a routine save.
-  return;
 }
 
 async function deleteMissingModules(modules: ModuleEntry[]) {
